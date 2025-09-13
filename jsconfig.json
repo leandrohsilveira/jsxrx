@@ -1,0 +1,14 @@
+{
+  "$schema": "https://www.schemastore.org/jsconfig.json",
+  "compilerOptions": {
+    "checkJs": true,
+    "strict": true,
+    "module": "NodeNext",
+    "moduleResolution": "nodenext"
+  },
+  "exclude": [
+    "node_modules",
+    "**/node_modules",
+    "**/dist"
+  ]
+}
