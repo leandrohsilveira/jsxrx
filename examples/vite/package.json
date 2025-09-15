@@ -1,12 +1,19 @@
 {
-  "name": "vite",
+  "$schema": "https://www.schemastore.org/package.json",
+  "name": "@ex/vite",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite dev",
+    "build": "vite build"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "",
+  "dependencies": {
+    "@jsxrx/core": "*",
+    "rxjs": "^7.8.2",
+    "vite": "^7.1.5"
+  }
 }

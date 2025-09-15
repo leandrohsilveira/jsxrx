@@ -1,7 +1,9 @@
 {
-  "name": "@jsxrs/core",
+  "$schema": "https://www.schemastore.org/package.json",
+  "name": "@jsxrx/core",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -11,5 +13,11 @@
   "description": "",
   "dependencies": {
     "rxjs": "^7.8.2"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
   }
 }
