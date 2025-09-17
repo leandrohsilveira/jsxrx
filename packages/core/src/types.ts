@@ -1,4 +1,5 @@
 import type { Observable } from "rxjs"
+import type { VDOMType } from "./constants/vdom.js"
 
 export type Obj = Record<string, unknown>
 
@@ -33,47 +34,63 @@ export interface Input<P extends Obj> {
 
 export interface ComponentInput<P extends Obj, D extends Obj = P> {
   name?: string
-  load?(props: Input<P>): D;
-  render(data: Data<D>): JsxRxNode
+  pipe?(props: Input<P>): D;
+  render(data: Data<D>): IRenderRaw | null
 }
 
 export type PropsFromInput<Props extends Obj, Events extends Obj> = Props &
 { [K in keyof Events]: (payload: Events[K]) => void }
 
 export interface Component<P extends Obj> {
-  (props: Observable<Props<P>>): Observable<JsxRxNode>
+  (props: Observable<Props<P>>): Observable<IRenderNode | null>
 }
 
-export type JsxRxElement = {
+interface RenderBase {
   id: string
-  type: 'element'
+}
+
+export interface ElementPlacement<T = unknown, E = unknown> {
+  parent: E
+  previous?(): T | E | null
+  next?(): T | E | null
+}
+
+export type IRenderRaw = IRenderNode | string | number | boolean
+export type IRenderNode = IRenderElementNode | IRenderTextNode | IRenderComponentNode
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface IRenderElementNode<P extends Obj = any> extends RenderBase {
+  type: typeof VDOMType['ELEMENT']
   tag: string
-  props: Record<string, unknown>
-  children: JsxRxNode[]
+  props: P
+  children: Record<string, IRenderNode>
 }
 
-export type JsxRxText = {
-  id: string
-  type: 'text',
+export interface IRenderTextNode extends RenderBase {
+  type: typeof VDOMType['TEXT']
   text: string
 }
 
-export type JsxRxComponent<T extends Obj> = {
-  id: string
-  type: 'component',
-  component: Component<T>
-  props: T
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface IRenderComponentNode<P extends Obj = any> extends RenderBase {
+  type: typeof VDOMType['COMPONENT']
+  component: Component<P>
+  props: P
 }
 
-export type JsxRxComponentFn<T extends Obj> = (props: T) => JsxRxNode
+export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
+  createTextNode(text: string): TextNode
+  createElement(tag: string): ElementNode
+  setText(text: string, node: TextNode): void
+  setProperty(element: ElementNode, name: string, value: unknown): void
+  listen(element: ElementNode, name: string, listener: () => void): () => void
+  determinePropsAndEvents(names: string[]): { props: string[], events: string[] }
+  place(node: TextNode | ElementNode, placement: ElementPlacement<TextNode, ElementNode>): void
+  remove(node: TextNode | ElementNode, target: ElementNode): void
+}
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type JsxRxTreeNode = JsxRxElement | JsxRxText | JsxRxComponent<any> | null
-
-export type JsxRxNode = string | number | boolean | JsxRxTreeNode | null
-
-export type JsxRxVText = { id: string, element: Text }
-export type JsxRxVElement = { id: string, element: Element, children: Record<string, JsxRxVNode> }
-export type JsxRxVComponent<T extends Obj> = { id: string, component: Component<T>, children: JsxRxVNode | null }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type JsxRxVNode = JsxRxVText | JsxRxVElement | JsxRxVComponent<any>
+export type IRenderNodeMap = {
+  [VDOMType.TEXT]: IRenderTextNode
+  [VDOMType.ELEMENT]: IRenderElementNode
+  [VDOMType.COMPONENT]: IRenderComponentNode
+}

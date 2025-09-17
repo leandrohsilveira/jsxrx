@@ -1,5 +1,6 @@
 import { combineLatest, distinctUntilChanged, isObservable, map, of } from "rxjs"
 import { shallowEqual } from "./util/object"
+import { toRenderNode } from "./vdom"
 
 /**
  * @template {import("./types").Obj} Props
@@ -7,15 +8,17 @@ import { shallowEqual } from "./util/object"
  * @param {import("./types").ComponentInput<Props, Data>} input
  * @returns {import("./types").Component<Props>}
  */
-export function component({ load, render }) {
+export function component({ pipe, render }) {
   return props$ => {
     const props = new Proxy(/** @type {import("./types").ExpandedProps<Props>} */({}), {
       get: (_, key) => {
-        return props$.pipe(map(props => props[/** @type {string} */(key)]))
+        return props$.pipe(
+          map(props => props[/** @type {string} */(key)]),
+        )
       }
     })
 
-    const data = load ? load({ props$, props }) : props
+    const data = pipe ? pipe({ props$, props }) : props
 
     /** @type {*} */
     const functions = {
@@ -41,6 +44,7 @@ export function component({ load, render }) {
       )),
       distinctUntilChanged(shallowEqual),
       map(data => render(/** @type {*} */(data))),
+      map(raw => toRenderNode(raw))
     )
   }
 }
