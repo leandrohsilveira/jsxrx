@@ -1,5 +1,5 @@
-import { _jsx, component, render } from "@jsxrx/core"
-import { BehaviorSubject } from "rxjs"
+import { component, render, state } from "@jsxrx/core"
+import { delay } from "rxjs"
 
 const root = document.querySelector('[root]')
 
@@ -11,10 +11,10 @@ if (!root) throw new Error('Root element not found')
 const Component = component({
   pipe({ props: { text } }) {
     console.log('Component.load')
-    const count = new BehaviorSubject(0)
+    const count = state(0)
     return {
       text,
-      count,
+      count: count.pipe(delay(1000)),
       increase() {
         count.next(count.value + 1)
       },
@@ -27,16 +27,20 @@ const Component = component({
     console.log('Component.render', text, count)
     if (!text) return 'No text provided'
     return (
-      _jsx('0:header', 'header', { class: 'header' },
-        _jsx('1:h1', 'h1', { class: 'test' }, text),
-        _jsx('2:text_description', TextDescription, { text }),
-        _jsx('3:count_display', CountDisplay, { count }),
-        count % 2 === 0
-          ? _jsx('4:div', 'div', null, 'The count is even')
-          : _jsx('5:div', 'div', null, 'The count is odd'),
-        _jsx('6:increment_btn', 'button', { onClick: increase }, 'Increase count'),
-        _jsx('7:decrement_btn', 'button', { onClick: decrease }, 'Decrease count'),
-      )
+      <header className="header">
+        <h1 className="test">{text}</h1>
+        <TextDescription text={text} />
+        <CountDisplay count={count} />
+        {count % 2 === 0 ? <div>The count is even</div> : <div>The count is odd</div>}
+        <button type="button" onClick={increase}>Increase</button>
+        <button type="button" onClick={decrease}>Decrease</button>
+      </header>
+    )
+  },
+  placeholder() {
+    console.log('Component.placeholder')
+    return (
+      <div>Loading...</div>
     )
   }
 })
@@ -54,7 +58,7 @@ const CountDisplay = component({
   render({ count }) {
     console.log('CountDisplay.render', count)
     return (
-      _jsx('0:div', 'div', null, 'The count is ', count)
+      <div>The count is {count}</div>
     )
   }
 })
@@ -72,12 +76,12 @@ const TextDescription = component({
     const suffix = length > 1 ? 'characters' : 'character'
     console.log('TextDescription.render', { text, length, suffix })
     return (
-      _jsx('0:p_text_description', 'p', null, 'The provided text has ', length, ' ', suffix)
+      <p>The provided text has {length} {suffix}</p>
     )
   }
 })
 
 render(
-  _jsx('component', Component, { text: 'Hello world!' }),
+  <Component text="Hello world" />,
   root
 )

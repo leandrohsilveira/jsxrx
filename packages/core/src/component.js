@@ -1,16 +1,21 @@
-import { combineLatest, distinctUntilChanged, isObservable, map, of } from "rxjs"
+/**
+ * @import { ComponentInput, Component, ExpandedProps, Obj } from "./jsx"
+ */
+
+import { combineLatest, debounceTime, distinctUntilChanged, isObservable, map, of, startWith } from "rxjs"
 import { shallowEqual } from "./util/object"
 import { toRenderNode } from "./vdom"
+import { State } from "./observable"
 
 /**
- * @template {import("./types").Obj} Props
- * @template {import("./types").Obj} Data
- * @param {import("./types").ComponentInput<Props, Data>} input
- * @returns {import("./types").Component<Props>}
+ * @template {Obj} Props
+ * @template {Obj} Data
+ * @param {ComponentInput<Props, Data>} input
+ * @returns {Component<Props>}
  */
-export function component({ pipe, render }) {
+export function component({ pipe: componentPipe, placeholder, render }) {
   return props$ => {
-    const props = new Proxy(/** @type {import("./types").ExpandedProps<Props>} */({}), {
+    const props = new Proxy(/** @type {ExpandedProps<Props>} */({}), {
       get: (_, key) => {
         return props$.pipe(
           map(props => props[/** @type {string} */(key)]),
@@ -18,7 +23,7 @@ export function component({ pipe, render }) {
       }
     })
 
-    const data = pipe ? pipe({ props$, props }) : props
+    const data = componentPipe ? componentPipe({ props$, props }) : props
 
     /** @type {*} */
     const functions = {
@@ -28,12 +33,13 @@ export function component({ pipe, render }) {
 
     return combineLatest(
       Object.fromEntries(
-        Object.entries(data ?? {}).map(([key, value]) => {
+        Object.entries(data).map(([key, value]) => {
           if (isObservable(value)) return [key, value]
           return [key, of(value)]
         })
       )
     ).pipe(
+      debounceTime(1),
       map(data => Object.fromEntries(
         Object.entries(data).map(([key, value]) => {
           if (typeof value !== 'function') return [key, value];
@@ -44,8 +50,19 @@ export function component({ pipe, render }) {
       )),
       distinctUntilChanged(shallowEqual),
       map(data => render(/** @type {*} */(data))),
+      startWith(placeholder?.() ?? null),
       map(raw => toRenderNode(raw))
     )
   }
 }
 
+/**
+ * @template T
+ * @param {T} initialValue 
+ * @returns {State<T>}
+ */
+export function state(initialValue) {
+  return new State(initialValue)
+}
+
+export { combineLatest as combine } from "rxjs"

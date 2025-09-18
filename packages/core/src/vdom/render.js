@@ -1,15 +1,32 @@
 /**
- * @import { Component, IRenderComponentNode, IRenderElementNode, IRenderTextNode, Obj, IRenderNode, IRenderRaw } from "../types.js"
+ * @import { Component, IRenderComponentNode, IRenderElementNode, IRenderTextNode, Obj, IRenderNode, Element } from "../jsx"
  */
 
 import { VDOMType } from "../constants/vdom.js"
 
 /**
  * @template {Obj} P
+ * @template {keyof import("../jsx-runtime.js").JSX.IntrinsicElements} T
  * @param {string} id 
- * @param {string | Component<P>} input 
+ * @param {Component<P>} input 
  * @param {P | null} props 
- * @param {...(IRenderNode | string | number | boolean | null)} children 
+ * @param {...(Element | null)} children 
+ */
+/**
+ * @template {Obj} P
+ * @template {keyof import("../jsx-runtime.js").JSX.IntrinsicElements} T
+ * @param {string} id 
+ * @param {T} input 
+ * @param {import("../jsx-runtime.js").JSX.IntrinsicElements[T] | null} props 
+ * @param {...(Element | null)} children 
+ */
+/**
+ * @template {Obj} P
+ * @template {keyof import("../jsx-runtime.js").JSX.IntrinsicElements} T
+ * @param {string} id 
+ * @param {T | Component<P>} input 
+ * @param {*} props 
+ * @param {...(Element | null)} children 
  */
 export function _jsx(id, input, props, ...children) {
   if (typeof input === 'string') return new RenderElementNode(id, input, props, ...children.map(toRenderNode))
@@ -26,18 +43,18 @@ export function isRenderNode(value) {
 
 /**
  * @overload
- * @param {IRenderRaw} value
+ * @param {Element} value
  * @param {number | string} [index=0] 
  * @returns {IRenderNode}
  */
 /**
  * @overload
- * @param {IRenderRaw | null} value
+ * @param {Element | null} value
  * @param {number | string} [index=0] 
  * @returns {IRenderNode | null}
  */
 /**
- * @param {IRenderRaw | null} value
+ * @param {Element | null} value
  * @param {number | string} [index=0] 
  * @returns {IRenderNode | null}
  */
@@ -76,22 +93,22 @@ export class RenderTextNode {
 
 /**
  * @class
- * @template {Obj} P
- * @implements {IRenderElementNode<P>}
+ * @template {keyof import("../jsx-runtime.js").JSX.IntrinsicElements} T
+ * @implements {IRenderElementNode<T>}
  */
 export class RenderElementNode {
 
   /**
    * @constructor
    * @param {string} id 
-   * @param {string} tag 
-   * @param {P | null} props
+   * @param {T} tag 
+   * @param {import("../jsx-runtime.js").JSX.IntrinsicElements[T] | null} props
    * @param {...(IRenderNode | null)} children 
    */
   constructor(id, tag, props, ...children) {
     this.id = id
     this.tag = tag
-    this.props = /** @type {P} */(props ?? {})
+    this.props = /** @type {import("../jsx-runtime.js").JSX.IntrinsicElements[T]} */(props ?? {})
     this.children = Object.fromEntries(
       children.filter(child => child !== null).map(child => [child.id, toRenderNode(child)])
     )

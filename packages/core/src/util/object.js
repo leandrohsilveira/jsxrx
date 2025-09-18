@@ -1,5 +1,5 @@
 /**
- * @import { Obj } from "../types.js"
+ * @import { Obj } from "../jsx.js"
  */
 
 /**

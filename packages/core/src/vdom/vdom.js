@@ -1,10 +1,10 @@
 /**
  * @import { Observable } from "rxjs"
- * @import { ElementPlacement, IRenderComponentNode, IRenderElementNode, IRenderer, IRenderNode, IRenderNodeMap, IRenderTextNode, Obj, Props } from "../types.js"
+ * @import { ElementPlacement, IRenderComponentNode, IRenderElementNode, IRenderer, IRenderNode, IRenderTextNode, Obj, Props } from "../jsx.js"
  * @import { IVDOMType } from "../constants/types.js"
  */
 
-import { first, map, shareReplay, switchMap, Subscription, combineLatest, isObservable, of } from "rxjs"
+import { first, map, shareReplay, switchMap, Subscription, combineLatest, isObservable, of, filter } from "rxjs"
 import { VDOMType } from "../constants/vdom.js"
 import { assert } from "../util/assert.js"
 import { shallowDiff } from "../util/object.js"
@@ -201,6 +201,7 @@ export class VDOMComponentNode {
   constructor(renderer, node$) {
     this.#renderer = renderer
     this.props$ = node$.pipe(
+      filter(node => node !== null),
       switchMap(({ props }) =>
         combineLatest(
           Object.fromEntries(
@@ -213,6 +214,7 @@ export class VDOMComponentNode {
       ),
     )
     this.#node$ = node$.pipe(
+      filter(node => node !== null),
       first(),
       switchMap(({ component }) =>
         component(/** @type {Observable<Props<P>>} */(this.props$))
@@ -242,16 +244,17 @@ export class VDOMComponentNode {
     subscription.add(
       this.#node$.subscribe(node => {
         if (node === null && !this.child) return;
-        if (node === null) {
+        if (node === null || (this.id && node.id !== this.id)) {
           this.subscription?.unsubscribe()
           this.child = null
-          return;
         }
-        if (!this.child) {
+        if (node !== null && !this.child) {
+          this.id = node.id
           this.child = createVDOMNode(this.#renderer, node.type, this.#node$)
           this.element = this.child.element
+          this.subscription = this.child.subscribe(placement)
           subscription.add(() => console.debug('Destroying component', node.id))
-          subscription.add(this.child.subscribe(placement))
+          subscription.add(this.subscription)
         }
       })
     )

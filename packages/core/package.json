@@ -18,6 +18,14 @@
     ".": {
       "types": "./src/index.d.ts",
       "default": "./src/index.js"
+    },
+    "./jsx-runtime": {
+      "import": "./src/jsx-runtime.js",
+      "types": "./src/jsx-runtime.d.ts"
+    },
+    "./jsx-dev-runtime": {
+      "import": "./src/jsx-dev-runtime.js",
+      "types": "./src/jsx-dev-runtime.d.ts"
     }
   }
 }

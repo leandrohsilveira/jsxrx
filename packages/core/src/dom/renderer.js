@@ -1,5 +1,5 @@
 /**
- * @import { Obj, IRenderer, ElementPlacement } from "../types.js"
+ * @import { Obj, IRenderer, ElementPlacement } from "../jsx.js"
  */
 
 /**
@@ -35,12 +35,7 @@ export class DOMRenderer {
    * @param {unknown} value 
    */
   setProperty(element, name, value) {
-    switch (name) {
-      case 'class':
-        return element.className = String(value)
-      default:
-        return element.setAttribute(name, String(value))
-    }
+    /** @type {*} */(element)[name] = value
   }
 
   /**
