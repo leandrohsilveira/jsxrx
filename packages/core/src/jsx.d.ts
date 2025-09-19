@@ -8,9 +8,36 @@ export type Obj = Record<string, unknown>
 
 export type Fn = (...args: any) => any
 
+export interface IValue<T> extends Observable<T> {
+  pending$: Observable<boolean>
+}
+
+export interface IState<T> extends Observable<T> {
+  value: T
+  pending$: Observable<boolean>
+  set(value: T): void
+}
+
+export interface IStream<T> {
+  kind: 'stream'
+  value$: Observable<T>
+}
+
+export interface IAsync<T> {
+  kind: 'async'
+  value$: Observable<T>
+  pending$: Observable<boolean>
+}
+
+export type IDeferred<T> = { isLoading: true, value: null } | { isLoading: false, value: T }
+
 export type Data<T extends Obj> = {
   [K in keyof T]:
-  T[K] extends Observable<infer V>
+  T[K] extends IStream<infer V>
+  ? Observable<V>
+  : T[K] extends IAsync<infer V>
+  ? IDeferred<V>
+  : T[K] extends Observable<infer V>
   ? V
   : T[K]
 }
@@ -20,6 +47,10 @@ export type Props<T extends Obj> = {
   T[K] extends Observable<infer V>
   ? V
   : T[K]
+}
+
+export type ComponentProps<T extends Obj> = {
+  [K in keyof T]: T[K] | Observable<T[K]>
 }
 
 export type ExpandedProps<T extends Obj> = {
@@ -42,7 +73,8 @@ export interface ComponentInput<P extends Obj, D extends Obj = P> {
 }
 
 export interface Component<P extends Obj> {
-  (props: Observable<Props<P>>): Observable<IRenderNode | null>
+  (props: Observable<ComponentProps<P>>): Observable<IRenderNode | null>
+  displayName?: string
 }
 
 export interface ElementPlacement<T = unknown, E = unknown> {
@@ -74,6 +106,7 @@ export interface IRenderComponentNode<P extends Obj = any> extends RenderBase {
   type: typeof VDOMType['COMPONENT']
   component: Component<P>
   props: P
+  name: string
 }
 
 export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
@@ -2272,7 +2305,7 @@ declare namespace JsxRx {
       children: {};
     }
 
-    type LibraryManagedAttributes<C, P> = C extends Component<infer CP> ? CP : P;
+    type LibraryManagedAttributes<C, P> = C extends Component<infer CP> ? ComponentProps<CP> : P;
 
     interface IntrinsicAttributes extends JsxRx.Attributes { }
 

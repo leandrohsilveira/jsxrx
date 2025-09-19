@@ -3,8 +3,6 @@
  * @import { Element } from "./jsx.js"
  */
 
-import { of } from "rxjs"
-import { VDOMType } from "./constants/vdom.js"
 import { DOMRenderer } from "./dom/renderer.js"
 import { assert } from "./util/assert.js"
 import { createVDOMNode } from "./vdom/vdom.js"
@@ -20,14 +18,12 @@ export function render(element, target) {
 
   const node = toRenderNode(element)
 
-  const node$ = of(node)
-
   const vdom = createVDOMNode(
     new DOMRenderer(),
-    node?.type ?? VDOMType.COMPONENT,
-    node$
+    node,
+    { parent: target }
   )
 
-  return vdom.subscribe({ parent: target })
+  return vdom.subscribe()
 }
 

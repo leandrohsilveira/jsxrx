@@ -1,266 +1,280 @@
 /**
- * @import { Observable } from "rxjs"
- * @import { ElementPlacement, IRenderComponentNode, IRenderElementNode, IRenderer, IRenderNode, IRenderTextNode, Obj, Props } from "../jsx.js"
- * @import { IVDOMType } from "../constants/types.js"
+ * @import { ElementPlacement, IRenderComponentNode, IRenderElementNode, IRenderer, IRenderNode, IRenderTextNode, Obj } from "../jsx"
+ * @import { IVDOMNode } from "./types.js"
  */
 
-import { first, map, shareReplay, switchMap, Subscription, combineLatest, isObservable, of, filter } from "rxjs"
-import { VDOMType } from "../constants/vdom.js"
-import { assert } from "../util/assert.js"
-import { shallowDiff } from "../util/object.js"
+import { BehaviorSubject, Subscription } from "rxjs"
+import { shallowDiff } from "../util/object"
+import { VDOMType } from "../constants/vdom"
+import { assert } from "../util/assert"
+
 
 /**
- * @template [T=unknown]
- * @template [E=unknown]
+ * @template T
+ * @template E
  * @param {IRenderer<T, E>} renderer 
- * @param {IVDOMType} type 
- * @param {Observable<*>} node$ 
+ * @param {IRenderNode<*, *>} node 
+ * @param {ElementPlacement} placement 
+ * @returns {IVDOMNode<T, E>}
  */
-export function createVDOMNode(renderer, type, node$) {
-  switch (type) {
-    case VDOMType.TEXT:
-      return new VDOMTextNode(renderer, node$)
-    case VDOMType.ELEMENT:
-      return new VDOMElementNode(renderer, node$)
+export function createVDOMNode(renderer, node, placement) {
+  switch (node.type) {
     case VDOMType.COMPONENT:
-      return new VDOMComponentNode(renderer, node$)
+      return new VDOMComponentNode(renderer, node, placement)
+    case VDOMType.ELEMENT:
+      return new VDOMElementNode(renderer, node, placement)
+    case VDOMType.TEXT:
+      return new VDOMTextNode(renderer, node, placement)
   }
 }
 
+
 /**
- * @template [T=unknown]
- * @template [E=unknown]
+ * @template T
+ * @template E
+ * @implements {IVDOMNode<T, E>}
  */
-class VDOMTextNode {
+export class VDOMTextNode {
 
   /**
    * @param {IRenderer<T, E>} renderer 
-   * @param {Observable<IRenderTextNode>} node$ 
+   * @param {IRenderTextNode} node 
+   * @param {ElementPlacement} placement 
    */
-  constructor(renderer, node$) {
-    this.#node$ = node$.pipe(shareReplay())
+  constructor(renderer, node, placement) {
     this.#renderer = renderer
+    this.id = node.id
+    this.text = node.text
+    this.placement = placement
+    this.element = renderer.createTextNode(node.text)
+    this.#stream = new BehaviorSubject(node)
+
+    renderer.place(this.element, placement)
   }
 
-  text = ''
-  type = VDOMType.TEXT
-  #node$
+  #stream
   #renderer
-
-  /** @type {T | null} */
-  element = null
+  name = 'text'
 
   /**
-   * @param {ElementPlacement<T, E>} placement 
+   * @param {IRenderTextNode} node 
    */
-  subscribe(placement) {
+  apply(node) {
+    this.#stream.next(node)
+  }
+
+  async subscribe() {
     const subscription = new Subscription()
-
-    subscription.add(
-      this.#node$.subscribe(node => {
-        if (node === null) return
-        if (!this.element) {
-          this.element = this.#renderer.createTextNode(node.text)
-          this.#renderer.place(this.element, placement)
-          subscription.add(
-            () => {
-              console.log('removing text node', this.element)
-              if (this.element) this.#renderer.remove(this.element, placement.parent)
-            }
-          )
-          return
-        }
-        if (this.text !== node.text) {
-          this.text = node.text
-          this.#renderer.setText(node.text, this.element)
-        }
-      })
+    await new Promise(resolve =>
+      subscription.add(
+        this.#stream.subscribe(node => {
+          if (node.text !== this.text) {
+            this.#renderer.setText(node.text, this.element)
+            this.text = node.text
+          }
+          resolve(null)
+        })
+      )
     )
-
+    subscription.add(
+      () => {
+        this.#renderer.remove(this.element, this.placement.parent)
+      }
+    )
     return subscription
   }
-
 }
-
 /**
- * @template [T=unknown]
- * @template [E=unknown]
+ * @template T
+ * @template E
+ * @implements {IVDOMNode<T, E>}
  */
-class VDOMElementNode {
+export class VDOMElementNode {
 
   /**
    * @param {IRenderer<T, E>} renderer 
-   * @param {Observable<IRenderElementNode>} node$
+   * @param {IRenderElementNode<*>} node 
+   * @param {ElementPlacement} placement 
    */
-  constructor(renderer, node$) {
-    this.#node$ = node$.pipe(shareReplay())
+  constructor(renderer, node, placement) {
     this.#renderer = renderer
+    this.placement = placement
+    this.id = node.id
+    this.name = node.tag
+    this.element = renderer.createElement(node.tag)
+    this.#stream = new BehaviorSubject(node)
   }
 
-  type = VDOMType.ELEMENT
-
-  #node$
-  #renderer
-  /** @type {E | null} */
-  element = null
-
-  /** @type {Obj} */
+  /** @type {Record<string, *>} */
   props = {}
 
   /** @type {Record<string, IRenderNode>} */
   children = {}
 
-  /** @type {Record<string, Subscription>} */
-  #subscriptions = {}
-
-  /** @type {Record<string, VDOMTextNode<T, E> | VDOMElementNode<T, E> | VDOMComponentNode<*, T, E> | null>} */
-  vdom = {}
-
   /** @type {Record<string, () => void>} */
   #events = {}
 
+  /** @type {Record<string, IVDOMNode<T, E>>} */
+  #vdom = {}
+
+  /** @type {Record<string, Subscription>} */
+  #subscriptions = {}
+
+  #renderer
+  #stream
+
   /**
-   * @param {ElementPlacement<T, E>} placement 
+   * @param {IRenderElementNode<*>} node 
+   * @param {ElementPlacement} placement 
    */
-  subscribe(placement) {
+  apply(node, placement) {
+    this.placement = placement
+    this.#stream.next(node)
+  }
+
+  async subscribe() {
     const subscription = new Subscription()
-
-    subscription.add(
-      this.#node$.subscribe(node => {
-        if (node === null) return
-        const element = this.element ?? this.#renderer.createElement(node.tag)
-
-        const propsDiff = shallowDiff(node.props, this.props)
-        if (propsDiff.length > 0) {
-          const { props, events } = this.#renderer.determinePropsAndEvents(propsDiff)
-          for (const prop of props) this.#renderer.setProperty(element, prop, node.props[prop])
-          for (const event of events) {
-            this.#events[event]?.()
-            this.#events[event] = this.#renderer.listen(element, event, node.props[event])
+    await new Promise(resolve =>
+      subscription.add(
+        this.#stream.subscribe(async node => {
+          const changedProps = shallowDiff(node.props, this.props)
+          if (changedProps.length > 0) {
+            const { props, events } = this.#renderer.determinePropsAndEvents(changedProps)
+            for (const name of props) {
+              this.#renderer.setProperty(this.element, name, node.props[name])
+            }
+            for (const name of events) {
+              this.#events[name]?.()
+              this.#events[name] = this.#renderer.listen(this.element, name, node.props[name])
+            }
           }
-        }
-        this.props = node.props
 
-        const { removed, added, simblings } = detectChildrenChanges(node.children, this.children)
+          const { added, removed, remaining, simblings } = detectChildrenChanges(node.children, this.children)
 
-        for (const id of removed) {
-          const subscription = this.#subscriptions[id]
-          assert(subscription, "VDOM References must have an subscription")
-          subscription.unsubscribe()
-          delete this.#subscriptions[id]
-          delete this.vdom[id]
-        }
+          for (const id of removed) {
+            assert(this.#vdom[id], `VDOM Element with id "${id}" not found`)
+            assert(this.#subscriptions[id], `VDOM Subscription with id "${id}" not found`)
+            this.#subscriptions[id].unsubscribe()
+            delete this.#vdom[id]
+            delete this.#subscriptions[id]
+          }
 
-        for (const id of added) {
-          const child = node.children[id]
-          const { previous, next } = simblings[id]
-          this.vdom[id] = createVDOMNode(this.#renderer, child.type, this.#node$.pipe(map(node => node?.children?.[id] ?? null)))
-          this.#subscriptions[id] = this.vdom[id].subscribe({
-            parent: element,
-            previous: () => {
-              return previous ? this.vdom[previous]?.element ?? null : null
-            },
-            next: () => {
-              return next ? this.vdom[next]?.element ?? null : null
-            }
-          })
-        }
+          for (const id of remaining) {
+            assert(this.#vdom[id], `VDOM Element with id "${id}" not found`)
+            this.#vdom[id].apply(node.children[id], this.placement)
+          }
 
-        this.children = node.children
+          for (const id of added) {
+            assert(!this.#vdom[id], `There is already a VDOM Element with id "${id}"`)
+            const { previous, next } = simblings[id]
+            this.#vdom[id] = createVDOMNode(this.#renderer, node.children[id], {
+              parent: this.element,
+              next: () => {
+                if (!next) return null
+                return this.#vdom[next]?.element ?? null
+              },
+              previous: () => {
+                if (!previous) return null
+                return this.#vdom[previous]?.element ?? null
+              }
+            })
+            this.#subscriptions[id] = await this.#vdom[id].subscribe()
+          }
 
-        if (!this.element) {
-          this.#renderer.place(element, placement)
-          this.element = element
-          subscription.add(
-            () => {
-              console.log('removing element node', this.element)
-              Object.values(this.#events).forEach(unsub => unsub())
-              if (this.element) this.#renderer.remove(this.element, placement.parent)
-              Object.values(this.#subscriptions).forEach(subscription => subscription.unsubscribe())
-            }
-          )
-        }
-      })
+          this.#renderer.place(this.element, this.placement)
+          this.children = node.children
+          resolve(null)
+        })
+      )
+
+    )
+    subscription.add(
+      () => {
+        this.#renderer.remove(this.element, this.placement.parent)
+        Object.values(this.#events).map(unsubscribe => unsubscribe())
+        Object.values(this.#subscriptions).forEach(subscription => subscription.unsubscribe())
+        this.#vdom = {}
+        this.children = {}
+      }
     )
     return subscription
   }
 
 }
 
+
 /**
- * @template {Obj} [P = *]
- * @template [T=unknown]
- * @template [E=unknown]
+ * @template T
+ * @template E
+ * @implements {IVDOMNode<T, E>}
  */
 export class VDOMComponentNode {
-
   /**
    * @param {IRenderer<T, E>} renderer 
-   * @param {Observable<IRenderComponentNode<P>>} node$ 
+   * @param {IRenderComponentNode<*>} node
+   * @param {ElementPlacement} placement 
    */
-  constructor(renderer, node$) {
+  constructor(renderer, node, placement) {
     this.#renderer = renderer
-    this.props$ = node$.pipe(
-      filter(node => node !== null),
-      switchMap(({ props }) =>
-        combineLatest(
-          Object.fromEntries(
-            Object.entries(props).map(([key, value]) => [
-              key,
-              isObservable(value) ? value : of(value)
-            ])
-          )
-        )
-      ),
-    )
-    this.#node$ = node$.pipe(
-      filter(node => node !== null),
-      first(),
-      switchMap(({ component }) =>
-        component(/** @type {Observable<Props<P>>} */(this.props$))
-      ),
-      shareReplay()
-    )
+    this.id = node.id
+    this.name = node.name
+    this.props = node.props
+    this.placement = placement
+    this.#props$ = new BehaviorSubject(node.props)
+    this.#stream$ = node.component(this.#props$)
   }
 
   #renderer
-  #node$
-
-  /** @type {VDOMTextNode<T, E> | VDOMElementNode<T, E> | VDOMComponentNode<*, T, E> | null} */
-  child = null
+  #props$
+  #stream$
 
   /** @type {Subscription | null} */
-  subscription = null
+  #subscription = null
 
-  /** @type {T | E | null} */
-  element = null
+  /** @type {IVDOMNode<T, E> | null} */
+  child = null
+
+  get element() {
+    return this.child?.element ?? null
+  }
 
   /**
-   * @param {ElementPlacement<T, E>} placement 
+   * @param {IRenderComponentNode<*>} node 
    */
-  subscribe(placement) {
+  apply(node) {
+    this.#props$.next(node.props)
+  }
+
+  async subscribe() {
     const subscription = new Subscription()
-
-    subscription.add(
-      this.#node$.subscribe(node => {
-        if (node === null && !this.child) return;
-        if (node === null || (this.id && node.id !== this.id)) {
-          this.subscription?.unsubscribe()
-          this.child = null
-        }
-        if (node !== null && !this.child) {
-          this.id = node.id
-          this.child = createVDOMNode(this.#renderer, node.type, this.#node$)
-          this.element = this.child.element
-          this.subscription = this.child.subscribe(placement)
-          subscription.add(() => console.debug('Destroying component', node.id))
-          subscription.add(this.subscription)
-        }
-      })
+    await new Promise(resolve =>
+      subscription.add(
+        this.#stream$.subscribe(async node => {
+          if (!this.child && !node) return
+          if (this.child && (!node || node.id !== this.child.id)) {
+            assert(this.#subscription, `Component child subscription not found for component ${this.name} (${this.id})`)
+            this.#subscription.unsubscribe()
+            subscription.remove(this.#subscription)
+            this.child = null
+            this.#subscription = null
+          }
+          if (!this.child && node) {
+            this.child = createVDOMNode(this.#renderer, node, this.placement)
+            this.#subscription = await this.child.subscribe()
+            subscription.add(this.#subscription)
+            subscription.add(() => console.log('Component VDOM Node destroyed', this))
+            resolve(null)
+            return
+          }
+          if (this.child && node) {
+            this.child.apply(node, this.placement)
+          }
+        })
+      )
     )
-
     return subscription
   }
+
 }
 
 /**
