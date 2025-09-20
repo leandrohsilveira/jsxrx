@@ -1,4 +1,4 @@
-import { component, render, state } from "@jsxrx/core"
+import { component, render, state, stream } from "@jsxrx/core"
 import { delay } from "rxjs"
 
 const root = document.querySelector('[root]')
@@ -10,12 +10,11 @@ if (!root) throw new Error('Root element not found')
  */
 const App = component({
   name: 'App',
-  pipe({ props: { text } }) {
+  pipe() {
     console.log('Component.load')
     const count = state(0)
     return {
-      text,
-      count: count.pipe(delay(1000)),
+      count: stream(count.pipe(delay(1000))),
       increase() {
         count.set(count.value + 1)
       },
@@ -24,8 +23,8 @@ const App = component({
       }
     }
   },
-  render({ text, count, increase, decrease }) {
-    console.log('Component.render', text, count)
+  render({ count, increase, decrease }) {
+    console.log('Component.render')
     return (
       <header className="header">
         <CountDisplay count={count} />
@@ -35,10 +34,7 @@ const App = component({
     )
   },
   placeholder() {
-    console.log('Component.placeholder')
-    return (
-      <div>Loading...</div>
-    )
+    return <div>Loading Application...</div>
   }
 })
 
@@ -58,6 +54,9 @@ const CountDisplay = component({
     return (
       <div>The count is {count}</div>
     )
+  },
+  placeholder() {
+    return <div>Loading...</div>
   }
 })
 
