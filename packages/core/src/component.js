@@ -17,7 +17,7 @@ import { toRenderNode } from "./vdom"
 export function component({ name, pipe: componentPipe, placeholder, render }) {
   /** @type {Component<P>} */
   const componentFn = componentProps$ => {
-    const loading$ = new BehaviorSubject(false)
+    const loading$ = new BehaviorSubject(true)
     const props$ = /** @type {Observable<Props<P>>} */(componentProps$.pipe(
       tap({ next: () => loading$.next(true) }),
       switchMap(props => {
@@ -86,6 +86,7 @@ export function component({ name, pipe: componentPipe, placeholder, render }) {
   componentFn.displayName = name
   return componentFn
 }
+
 /**
  * @template T
  * @param {T} initialValue 
