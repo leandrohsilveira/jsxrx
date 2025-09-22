@@ -80,7 +80,7 @@ export class DOMRenderer {
     if (next && parent.contains(next)) {
       return next.before(node)
     }
-    return parent.append(node)
+    return parent.prepend(node)
   }
 
   /**

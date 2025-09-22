@@ -1,20 +1,19 @@
-import { component, render, state, stream } from "@jsxrx/core"
-import { delay } from "rxjs"
+import { component, defer, loading, render, state } from "@jsxrx/core"
+import { delay, interval } from "rxjs"
 
 const root = document.querySelector('[root]')
 
 if (!root) throw new Error('Root element not found')
 
-/**
- * @type {import("@jsxrx/core").Component<{ text: string }>}
- */
 const App = component({
   name: 'App',
   pipe() {
-    console.log('Component.load')
     const count = state(0)
+    const delayedCount = count.pipe(delay(1000))
     return {
-      count: stream(count.pipe(delay(1000))),
+      time: defer(interval(1000)),
+      count: defer(delayedCount),
+      isLoading: loading(delayedCount),
       increase() {
         count.set(count.value + 1)
       },
@@ -23,13 +22,13 @@ const App = component({
       }
     }
   },
-  render({ count, increase, decrease }) {
-    console.log('Component.render')
+  render({ count, time, isLoading, increase, decrease }) {
     return (
       <header className="header">
         <CountDisplay count={count} />
-        <button type="button" onClick={increase}>Increase</button>
-        <button type="button" onClick={decrease}>Decrease</button>
+        <EllapsedTime time={time} />
+        <button type="button" disabled={isLoading} onClick={increase}>Increase</button>
+        <button type="button" disabled={isLoading} onClick={decrease}>Decrease</button>
       </header>
     )
   },
@@ -39,28 +38,22 @@ const App = component({
 })
 
 /** 
- * @type {import("@jsxrx/core").Component<{ count: number }>} 
+ * @type {import("@jsxrx/core").Component<{ count?: number }>} 
  */
 const CountDisplay = component({
   name: 'CountDisplay',
-  pipe({ props: { count } }) {
-    console.log('CountDisplay.load')
-    return {
-      count
-    }
-  },
-  render({ count }) {
-    console.log('CountDisplay.render', count)
-    return (
-      <div>The count is {count}</div>
-    )
-  },
-  placeholder() {
-    return <div>Loading...</div>
-  }
+  render: ({ count = 0 }) => <div>The count is {count}</div>,
+  placeholder: () => <div>Loading count...</div>
+})
+
+/** @type {import("@jsxrx/core").Component<{ time: number }>} */
+const EllapsedTime = component({
+  name: 'EllapsedTime',
+  render: ({ time }) => <div>Ellapsed time: {time} {time > 1 ? 'seconds' : 'second'}</div>,
+  placeholder: () => <div>Loading time...</div>
 })
 
 render(
-  <App text="Hello world" />,
+  <App />,
   root
 )

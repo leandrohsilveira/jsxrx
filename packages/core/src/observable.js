@@ -3,7 +3,7 @@
  * @import { IState, IStream } from "./jsx"
  */
 
-import { BehaviorSubject, debounceTime, distinctUntilChanged, isObservable, Observable, of, Subscription, tap } from "rxjs";
+import { BehaviorSubject, Observable, shareReplay, Subscription, tap } from "rxjs";
 
 /**
  * @template T
@@ -50,15 +50,17 @@ export class State extends ActivityAwareObservable {
       pending$ ?? new BehaviorSubject(false),
       subscriber => {
         this.#subscriptions.add(subscriber)
-        return this.#value$.pipe(tap(() => this.pending$.next(true))).subscribe(subscriber)
+        return this.#pipe$.pipe(tap(() => this.pending$.next(true))).subscribe(subscriber)
       }
     )
     this.#subscriptions = new Subscription()
     this.#value$ = new BehaviorSubject(initial)
+    this.#pipe$ = this.#value$.pipe(shareReplay())
   }
 
   #subscriptions
   #value$
+  #pipe$
 
   get value() {
     return this.#value$.value
@@ -91,51 +93,3 @@ export class Stream {
 
 }
 
-/**
- * @param {Record<string, *>} data 
- * @returns {{ loadings: Record<string, Observable<boolean>>, values: Record<string, Observable<*>> }}
- */
-export function combineStreams(data) {
-  return Object.entries(data).reduce(
-    ({ loadings, values }, [key, value]) => {
-      if (value instanceof ActivityAwareObservable || value instanceof State) {
-        return {
-          loadings: {
-            ...loadings,
-            [key]: value.pending$.pipe(distinctUntilChanged(), debounceTime(1)),
-          },
-          values: {
-            ...values,
-            [key]: value.pipe(tap({ next: () => value.pending$.next(false), finalize: () => value.pending$.next(false) })),
-          }
-        }
-      }
-      if (value instanceof Stream) {
-        return {
-          loadings,
-          values: {
-            ...values,
-            [key]: of(value.value$)
-          }
-        }
-      }
-      if (isObservable(value)) {
-        return {
-          loadings,
-          values: {
-            ...values,
-            [key]: value
-          }
-        }
-      }
-      return {
-        loadings,
-        values: {
-          ...values,
-          [key]: of(value)
-        }
-      }
-    },
-    { loadings: {}, values: {} }
-  )
-}

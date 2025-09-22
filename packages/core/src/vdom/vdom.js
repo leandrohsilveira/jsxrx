@@ -76,12 +76,12 @@ export class VDOMTextNode {
                 this.#renderer.remove(this.element, placement.parent)
               }
             )
+            resolve(null)
           }
           if (node.text !== this.text) {
             this.#renderer.setText(node.text, this.element)
             this.text = node.text
           }
-          resolve(null)
         })
       )
     )
@@ -106,7 +106,7 @@ export class VDOMElementNode {
     this.id = node.id
     this.name = node.tag
     this.element = renderer.createElement(node.tag)
-    this.#stream = new BehaviorSubject({ node, placement })
+    this.#stream$ = new BehaviorSubject({ node, placement })
   }
 
   /** @type {Record<string, *>} */
@@ -120,28 +120,34 @@ export class VDOMElementNode {
   /** @type {Record<string, () => void>} */
   #events = {}
 
-  /** @type {Record<string, IVDOMNode<T, E>>} */
-  #vdom = {}
+  /** @type {Promise<Record<string, IVDOMNode<T, E>>>} */
+  #vdom = Promise.resolve({})
 
   /** @type {Record<string, Subscription>} */
   #subscriptions = {}
 
   #renderer
-  #stream
+  #stream$
 
   /**
    * @param {IRenderElementNode<*>} node 
    * @param {ElementPlacement} placement 
    */
   apply(node, placement) {
-    this.#stream.next({ node, placement })
+    this.#stream$.next({ node, placement })
   }
 
   async subscribe() {
     const subscription = new Subscription()
     await new Promise(resolve =>
       subscription.add(
-        this.#stream.subscribe(async ({ node, placement }) => {
+        this.#stream$.subscribe(async ({ node, placement }) => {
+          const vdom = await this.#vdom
+
+          /** @type {PromiseWithResolvers<Record<string, IVDOMNode<T, E>>>} */
+          const rendering = Promise.withResolvers()
+          this.#vdom = rendering.promise
+
           const changedProps = shallowDiff(node.props, this.props)
           if (changedProps.length > 0) {
             const { props, events } = this.#renderer.determinePropsAndEvents(changedProps)
@@ -154,54 +160,60 @@ export class VDOMElementNode {
             }
           }
 
-          const { added, removed, remaining, simblings } = detectChildrenChanges(node.children, this.children)
+          const { added, removed, keys, simblings } = detectChildrenChanges(node.children, this.children)
 
           for (const id of removed) {
-            assert(this.#vdom[id], `VDOM Element with id "${id}" not found`)
+            assert(vdom[id], `VDOM Element with id "${id}" not found`)
             assert(this.#subscriptions[id], `VDOM Subscription with id "${id}" not found`)
             this.#subscriptions[id].unsubscribe()
-            delete this.#vdom[id]
+            console.debug('Removed VDOM element', id)
+            delete vdom[id]
             delete this.#subscriptions[id]
           }
 
-          for (const id of remaining) {
-            assert(this.#vdom[id], `VDOM Element with id "${id}" not found`)
-            this.#vdom[id].apply(node.children[id], placement)
+          for (const id of keys) {
+            if (added.has(id)) {
+              assert(!vdom[id], `There is already a VDOM Element with id "${id}"`)
+              const { previous, next } = simblings[id]
+              vdom[id] = createVDOMNode(this.#renderer, node.children[id], {
+                parent: this.element,
+                next: () => {
+                  if (!next) return null
+                  return vdom[next]?.element ?? null
+                },
+                previous: () => {
+                  if (!previous) return null
+                  return vdom[previous]?.element ?? null
+                }
+              })
+              this.#subscriptions[id] = await vdom[id].subscribe()
+              console.debug('Added VDOM element', id)
+            } else {
+              assert(vdom[id], `VDOM Element with id "${id}" not found`)
+              vdom[id].apply(node.children[id], placement)
+            }
           }
 
-          for (const id of added) {
-            assert(!this.#vdom[id], `There is already a VDOM Element with id "${id}"`)
-            const { previous, next } = simblings[id]
-            this.#vdom[id] = createVDOMNode(this.#renderer, node.children[id], {
-              parent: this.element,
-              next: () => {
-                if (!next) return null
-                return this.#vdom[next]?.element ?? null
-              },
-              previous: () => {
-                if (!previous) return null
-                return this.#vdom[previous]?.element ?? null
-              }
-            })
-            this.#subscriptions[id] = await this.#vdom[id].subscribe()
-          }
+          this.children = node.children
 
           if (!this.placed) {
             this.placed = true
             this.#renderer.place(this.element, placement)
             subscription.add(
               () => {
+                this.#stream$.complete()
                 this.#renderer.remove(this.element, placement.parent)
                 Object.values(this.#events).map(unsubscribe => unsubscribe())
                 Object.values(this.#subscriptions).forEach(subscription => subscription.unsubscribe())
-                this.#vdom = {}
+                this.#vdom = Promise.resolve({})
                 this.children = {}
               }
             )
             resolve(null)
           }
 
-          this.children = node.children
+          rendering.resolve(vdom)
+
         })
       )
 
@@ -273,7 +285,10 @@ export class VDOMComponentNode {
             this.child = createVDOMNode(this.#renderer, node, this.placement)
             this.#subscription = this.child.subscribe()
             subscription.add(await this.#subscription)
-            subscription.add(() => console.log('Component VDOM Node destroyed', this))
+            subscription.add(() => {
+              this.#props$.complete()
+              console.debug('Component VDOM Node destroyed', this)
+            })
             resolve(null)
             return
           }
@@ -296,22 +311,23 @@ function detectChildrenChanges(nextState, previousState) {
   const keys = Object.keys(nextState)
   const previous = Object.keys(previousState)
   const all = new Set([...keys, ...previous])
-  const added = []
-  const removed = []
-  const remaining = []
+  /** @type {Set<string>} */
+  const added = new Set()
+  /** @type {Set<string>} */
+  const removed = new Set()
   /** @type {Record<string, { next: string | null, previous: string | null }>} */
   const simblings = {}
 
   for (const key of all) {
-    if (key in nextState && !(key in previousState)) {
-      added.push(key)
-      continue
-    }
     if (!(key in nextState) && key in previousState) {
-      removed.push(key)
+      removed.add(key)
       continue
     }
-    remaining.push(key)
+
+    if (key in nextState && !(key in previousState)) {
+      added.add(key)
+      continue
+    }
   }
 
   for (let i = 0; i < keys.length; i++) {
@@ -324,8 +340,7 @@ function detectChildrenChanges(nextState, previousState) {
 
   return {
     added,
-    removed,
-    remaining,
+    removed: Array.from(removed),
     keys,
     previous,
     simblings

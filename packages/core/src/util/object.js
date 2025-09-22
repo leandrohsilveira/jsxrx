@@ -32,10 +32,9 @@ export function shallowDiff(a, b) {
 }
 
 /**
- * @template {Obj} T
- * @param {T} obj1 
- * @param {T} obj2 
- * @returns {(keyof T)[]}
+ * @param {Obj} obj1 
+ * @param {Obj} obj2 
+ * @returns {string[]}
  */
 export function combinedKeys(obj1, obj2) {
   return Array.from(

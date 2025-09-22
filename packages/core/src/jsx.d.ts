@@ -54,7 +54,7 @@ export type ComponentProps<T extends Obj> = {
 }
 
 export type ExpandedProps<T extends Obj> = {
-  [K in keyof T]:
+  [K in keyof T]-?:
   T[K] extends Observable<infer V>
   ? Observable<V>
   : Observable<T[K]>
@@ -65,11 +65,15 @@ export interface Input<P extends Obj> {
   props: ExpandedProps<P>
 }
 
-export interface ComponentInput<P extends Obj, D extends Obj = P> {
+export interface ComponentInputPipe<P extends Obj, IP extends P, D extends Obj> extends ComponentInputRender<D, IP> {
+  pipe(props: Input<P & IP>): D
+}
+
+export interface ComponentInputRender<P extends Obj, IP extends P = P> {
   name?: string
+  defaultProps?: IP
   placeholder?(): Element
-  pipe?(props: Input<P>): D;
-  render(data: Data<D>): Element | null
+  render(data: Data<P>): Element | null
 }
 
 export interface Component<P extends Obj> {
