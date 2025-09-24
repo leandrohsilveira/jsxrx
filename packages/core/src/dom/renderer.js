@@ -2,6 +2,8 @@
  * @import { Obj, IRenderer, ElementPlacement } from "../jsx.js"
  */
 
+import { assert } from "../util/assert.js"
+
 /**
  * @class
  * @implements {IRenderer<Text, Element>}
@@ -70,24 +72,55 @@ export class DOMRenderer {
    * @param {Text | Element} node 
    * @param {ElementPlacement<Text, Element>} placement
    */
-  place(node, placement) {
+  async place(node, placement) {
     const parent = placement.parent
-    const previous = placement.previous?.()
-    if (previous && parent.contains(previous)) {
+    const previous = await placement.previous?.()
+    if (previous) {
+      console.log(`Renderer.place => afterTarget`, { node, target: previous })
       return previous.after(node)
     }
-    const next = placement.next?.()
-    if (next && parent.contains(next)) {
+    const next = await placement.next?.()
+    if (next) {
+      console.log(`Renderer.place => beforeTarget`, { node, target: next })
       return next.before(node)
     }
+
+    console.log(`Renderer.place => parent => prepentChild`, { node, target: parent })
     return parent.prepend(node)
   }
 
   /**
    * @param {Text | Element} node 
-   * @param {Element} target 
+   * @returns {ElementPlacement<Text, Element>}
    */
-  remove(node, target) {
-    target.removeChild(node)
+  getPlacement(node) {
+    assert(node.parentElement, "Node should have a parent element")
+    return {
+      parent: node.parentElement,
+      async next() {
+        return /** @type {Text | Element | null} */(node.nextSibling)
+      },
+      async previous() {
+        return /** @type {Text | Element | null} */(node.previousSibling)
+      }
+    }
+  }
+
+  /**
+   * @param {Text | Element} node 
+   * @param {ElementPlacement<Text, Element>} placement 
+   */
+  async move(node, placement) {
+    this.remove(node, placement.parent)
+    await this.place(node, placement)
+    console.debug(`Renderer.move => elementMoved`, { node, placement })
+  }
+
+  /**
+   * @param {Text | Element} node 
+   * @param {Element} parent 
+   */
+  remove(node, parent) {
+    parent.removeChild(node)
   }
 }

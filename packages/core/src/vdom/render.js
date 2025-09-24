@@ -1,5 +1,5 @@
 /**
- * @import { Component, IRenderComponentNode, IRenderElementNode, IRenderTextNode, Obj, IRenderNode, Element } from "../jsx"
+ * @import { Component, IRenderComponentNode, IRenderElementNode, IRenderTextNode, Obj, IRenderNode, Element, IRenderFragmentNode } from "../jsx"
  */
 
 import { VDOMType } from "../constants/vdom.js"
@@ -34,11 +34,19 @@ export function _jsx(id, input, props, ...children) {
 }
 
 /**
+ * @param {string} id 
+ * @param {...(Element | null)} children 
+ */
+export function _fragment(id, ...children) {
+  return new RenderFragmentNode(id, ...children.map(toRenderNode))
+}
+
+/**
  * @param {unknown} value 
  * @returns {value is IRenderNode}
  */
 export function isRenderNode(value) {
-  return value instanceof RenderTextNode || value instanceof RenderElementNode || value instanceof RenderComponentNode
+  return value instanceof RenderTextNode || value instanceof RenderElementNode || value instanceof RenderComponentNode || value instanceof RenderFragmentNode
 }
 
 /**
@@ -110,7 +118,7 @@ export class RenderElementNode {
     this.tag = tag
     this.props = /** @type {import("../jsx-runtime.js").JSX.IntrinsicElements[T]} */(props ?? {})
     this.children = Object.fromEntries(
-      children.filter(child => child !== null).map(child => [child.id, toRenderNode(child)])
+      children.filter(child => child !== null).map(child => [child.id, child])
     )
   }
 
@@ -139,3 +147,22 @@ export class RenderComponentNode {
   type = VDOMType.COMPONENT
 }
 
+/**
+ * @class
+ * @implements {IRenderFragmentNode}
+ */
+export class RenderFragmentNode {
+
+  /**
+   * @param {string} id 
+   * @param {...(IRenderNode | null)} children 
+   */
+  constructor(id, ...children) {
+    this.id = id
+    this.children = Object.fromEntries(
+      children.filter(child => child !== null).map(child => [child.id, child])
+    )
+  }
+
+  type = VDOMType.FRAGMENT
+}

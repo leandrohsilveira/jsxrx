@@ -83,8 +83,8 @@ export interface Component<P extends Obj> {
 
 export interface ElementPlacement<T = unknown, E = unknown> {
   parent: E
-  previous?(): T | E | null
-  next?(): T | E | null
+  previous?(): Promise<T | E | null>
+  next?(): Promise<T | E | null>
 }
 
 interface RenderBase {
@@ -92,7 +92,7 @@ interface RenderBase {
 }
 
 export type Element<P extends Obj = any, T extends string = any> = IRenderNode<P, T> | string | number | boolean | null
-export type IRenderNode<P extends Obj = any, T extends string = any> = IRenderElementNode<T> | IRenderTextNode | IRenderComponentNode<P>
+export type IRenderNode<P extends Obj = any, T extends string = any> = IRenderElementNode<T> | IRenderTextNode | IRenderComponentNode<P> | IRenderFragmentNode
 
 export interface IRenderElementNode<T extends keyof JsxRx.JSX.IntrinsicElements = any> extends RenderBase {
   type: typeof VDOMType['ELEMENT']
@@ -113,6 +113,11 @@ export interface IRenderComponentNode<P extends Obj = any> extends RenderBase {
   name: string
 }
 
+export interface IRenderFragmentNode extends RenderBase {
+  type: typeof VDOMType['FRAGMENT']
+  children: Record<string, IRenderNode>
+}
+
 export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
   createTextNode(text: string): TextNode
   createElement(tag: string): ElementNode
@@ -120,8 +125,10 @@ export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
   setProperty(element: ElementNode, name: string, value: unknown): void
   listen(element: ElementNode, name: string, listener: () => void): () => void
   determinePropsAndEvents(names: string[]): { props: string[], events: string[] }
-  place(node: TextNode | ElementNode, placement: ElementPlacement<TextNode, ElementNode>): void
+  place(node: TextNode | ElementNode, placement: ElementPlacement<TextNode, ElementNode>): Promise<void>
+  move(node: TextNode | ElementNode, placement: ElementPlacement<TextNode, ElementNode>): Promise<void>
   remove(node: TextNode | ElementNode, target: ElementNode): void
+  getPlacement(node: TextNode | ElementNode): ElementPlacement<TextNode, ElementNode>
 }
 
 /**

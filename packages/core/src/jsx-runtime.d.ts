@@ -2,7 +2,6 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 
 import JsxRx from "./jsx";
-export { Fragment } from "./jsx";
 
 export namespace JSX {
   type ElementType<P extends JsxRx.Obj = any> = JsxRx.JSX.ElementType<P>;
@@ -15,6 +14,12 @@ export namespace JSX {
   interface IntrinsicElements extends JsxRx.JSX.IntrinsicElements { }
 }
 
+/**
+ * Create a React element.
+ *
+ * You should not use this function directly. Use JSX and a transpiler instead.
+ */
+export const Fragment: symbol
 
 /**
  * Create a React element.

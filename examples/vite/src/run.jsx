@@ -24,12 +24,12 @@ const App = component({
   },
   render({ count, time, isLoading, increase, decrease }) {
     return (
-      <header className="header">
+      <>
         <CountDisplay count={count} />
         <EllapsedTime time={time} />
         <button type="button" disabled={isLoading} onClick={increase}>Increase</button>
         <button type="button" disabled={isLoading} onClick={decrease}>Decrease</button>
-      </header>
+      </>
     )
   },
   placeholder() {
