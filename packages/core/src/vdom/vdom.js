@@ -160,7 +160,7 @@ export class VDOMTextNode {
         this.#stream.subscribe(async ({ node, placement }) => {
           if (!this.placed) {
             await this.#renderer.place(this.#element, placement)
-            console.log(`Placed Text Node ${this.id}`, this.#element)
+            console.debug(`Placed Text Node ${this.id}`, this.#element)
             this.placed = true
             subscription.add(
               () => {

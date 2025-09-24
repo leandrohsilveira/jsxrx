@@ -1,5 +1,5 @@
 /**
- * @import { Obj, IRenderer, ElementPlacement } from "../jsx.js"
+ * @import { IRenderer, ElementPlacement } from "../jsx.js"
  */
 
 import { assert } from "../util/assert.js"
@@ -76,16 +76,16 @@ export class DOMRenderer {
     const parent = placement.parent
     const previous = await placement.previous?.()
     if (previous) {
-      console.log(`Renderer.place => afterTarget`, { node, target: previous })
+      console.debug(`Renderer.place => afterTarget`, { node, target: previous })
       return previous.after(node)
     }
     const next = await placement.next?.()
     if (next) {
-      console.log(`Renderer.place => beforeTarget`, { node, target: next })
+      console.debug(`Renderer.place => beforeTarget`, { node, target: next })
       return next.before(node)
     }
 
-    console.log(`Renderer.place => parent => prepentChild`, { node, target: parent })
+    console.debug(`Renderer.place => parent => prepentChild`, { node, target: parent })
     return parent.prepend(node)
   }
 
