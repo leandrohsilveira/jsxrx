@@ -3,8 +3,8 @@
  * @import { IContext, IContextMap } from "./jsx"
  */
 
+import { assert } from "@jsxrx/utils";
 import { BehaviorSubject, combineLatest, map, of, switchMap } from "rxjs";
-import { assert } from "./util/assert";
 
 /**
  * @template T

@@ -2,9 +2,8 @@
  * @import { Component, IRenderComponentNode, IRenderElementNode, IRenderTextNode, Obj, IRenderNode, IRenderFragmentNode, default as JsxRx, ElementNode } from "../jsx"
  */
 
+import { asArray, shallowEqual } from "@jsxrx/utils"
 import { VDOMType } from "../constants/vdom.js"
-import { asArray } from "../util/array.js"
-import { shallowEqual } from "../util/object.js"
 
 /**
  * @template {Obj} P

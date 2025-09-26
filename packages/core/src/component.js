@@ -3,9 +3,9 @@
  * @import { Component, Obj, IState, IStream, ComponentInputRender, ComponentInputPipe, default as JsxRx, ElementNode } from "./jsx"
  */
 
+import { shallowEqual } from "@jsxrx/utils"
 import { BehaviorSubject, combineLatest, debounceTime, distinctUntilChanged, filter, isObservable, map, merge, of, Subject, Subscription, tap } from "rxjs"
 import { ActivityAwareObservable, State, Stream } from "./observable"
-import { shallowEqual } from "./util/object"
 import { isRenderNode } from "./vdom"
 
 

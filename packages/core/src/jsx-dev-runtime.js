@@ -3,7 +3,7 @@
  */
 
 import { Fragment } from './fragment.js'
-import { asArray } from "./util/array.js";
+import { asArray } from "@jsxrx/utils";
 import { _fragment, _jsx } from "./vdom/render.js";
 
 export { Fragment }

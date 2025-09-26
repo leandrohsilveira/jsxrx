@@ -2,7 +2,7 @@
  * @import { IRenderer, ElementPlacement } from "../jsx.js"
  */
 
-import { assert } from "../util/assert.js"
+import { assert } from "@jsxrx/utils"
 
 /**
  * @class

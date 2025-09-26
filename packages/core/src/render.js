@@ -2,12 +2,12 @@
  * @import { Element, ElementNode } from "./jsx.js"
  */
 
-import { DOMRenderer } from "./dom/renderer.js"
-import { assert } from "./util/assert.js"
-import { createVDOMNode } from "./vdom/vdom.js"
-import { toRenderNode } from "./vdom/render.js"
+import { assert } from "@jsxrx/utils"
 import { Subscription } from "rxjs"
 import { ContextMap } from "./context.js"
+import { DOMRenderer } from "./dom/renderer.js"
+import { toRenderNode } from "./vdom/render.js"
+import { createVDOMNode } from "./vdom/vdom.js"
 
 /**
  * @param {ElementNode} element

@@ -1,5 +1,5 @@
 /**
- * @import { Obj } from "../jsx.js"
+ * @typedef { Record<string, unknown> } Obj
  */
 
 /**

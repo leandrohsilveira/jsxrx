@@ -4,11 +4,10 @@
  * @import { IVDOMChildrenBase, IVDOMNode } from "./types.js"
  */
 
+import { assert, shallowDiff } from "@jsxrx/utils"
 import { BehaviorSubject, combineLatest, debounceTime, distinctUntilChanged, filter, isObservable, map, merge, of, shareReplay, Subscription, switchMap } from "rxjs"
 import { VDOMType } from "../constants/vdom"
 import { ContextMap } from "../context"
-import { assert } from "../util/assert"
-import { shallowDiff } from "../util/object"
 import { compareProps, compareRenderNode, isRenderNode, toRenderNode } from "./render"
 
 

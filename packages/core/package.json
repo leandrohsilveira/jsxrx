@@ -12,6 +12,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@jsxrx/utils": "*",
     "rxjs": "^7.8.2"
   },
   "exports": {
