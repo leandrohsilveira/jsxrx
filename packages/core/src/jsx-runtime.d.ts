@@ -5,7 +5,7 @@ import JsxRx, { ElementNode } from "./jsx";
 
 export namespace JSX {
   type ElementType<P extends JsxRx.Obj = any> = JsxRx.JSX.ElementType<P>;
-  type Element<P extends JsxRx.Obj = any, T extends string = any> = JsxRx.Element<P, T>;
+  type Element = ElementNode;
   interface ElementAttributesProperty extends JsxRx.JSX.ElementAttributesProperty { }
   interface ElementChildrenAttribute extends JsxRx.JSX.ElementChildrenAttribute { }
   type LibraryManagedAttributes<C, P> = JsxRx.JSX.LibraryManagedAttributes<C, P>;
@@ -14,12 +14,7 @@ export namespace JSX {
   interface IntrinsicElements extends JsxRx.JSX.IntrinsicElements { }
 }
 
-/**
- * Create a React element.
- *
- * You should not use this function directly. Use JSX and a transpiler instead.
- */
-export const Fragment: symbol
+export { Fragment } from "./fragment.js"
 
 /**
  * Create a React element.

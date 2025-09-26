@@ -1,6 +1,6 @@
 import * as JsxRx from "./jsx";
 
-export { JSX } from "./jsx-runtime"
+export { JSX, Fragment } from "./jsx-runtime"
 
 export interface JSXSource {
   /**
@@ -18,18 +18,6 @@ export interface JSXSource {
    */
   columnNumber?: number | undefined;
 }
-
-/**
- * Create a React element.
- *
- * You should not use this function directly. Use JSX and a transpiler instead.
- */
-export function Fragment(
-  key: JsxRx.Key | undefined,
-  isStatic: boolean,
-  source?: JSXSource,
-  self?: unknown,
-): JsxRx.ElementNode;
 
 /**
  * Create a React element.

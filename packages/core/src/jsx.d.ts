@@ -4,7 +4,7 @@
 import type { Observable } from "rxjs"
 import type { VDOMType } from "./constants/vdom.js"
 
-export type Obj = Record<string, unknown>
+export type Obj<T = unknown> = Record<string | symbol, T>
 
 export type Fn = (...args: any) => any
 
@@ -31,6 +31,16 @@ export interface IAsync<T> {
 
 export type IDeferred<T> = { isLoading: true, value: null } | { isLoading: false, value: T }
 
+export interface IContext<T> {
+  create(): BehaviorSubject<T>
+}
+
+export interface IContextMap {
+  set<T>(context: IContext<T>, value$: Observable<T>): void
+  require<T>(context: Context<T>): Observable<T>
+  optional(context: Context<T>): Observable<T>
+}
+
 export type Data<T extends Obj> = {
   [K in keyof T]:
   T[K] extends IStream<infer V>
@@ -43,42 +53,46 @@ export type Data<T extends Obj> = {
 }
 
 export type Props<T extends Obj> = {
-  [K in keyof T]:
-  T[K] extends Observable<infer V>
-  ? V
-  : T[K]
-}
-
-export type ComponentProps<T extends Obj> = {
   [K in keyof T]: T[K] | Observable<T[K]>
 }
 
-export type ExpandedProps<T extends Obj> = {
-  [K in keyof T]-?:
-  T[K] extends Observable<infer V>
-  ? Observable<V>
-  : Observable<T[K]>
+export type Inputs<P extends Obj> = {
+  props: {
+    [K in keyof P]: P[K] extends Observable<any> ? P[K] : Observable<P[K]>
+  }
+  props$: Observable<P>
+  context: IContextMap
 }
 
-export interface Input<P extends Obj> {
-  props$: Observable<Props<P>>
-  props: ExpandedProps<P>
+export type PropsWithChildren<T> = T & {
+  children?: ElementNode
 }
+
+export type PropsWithKey<T> = T & {
+  key?: JsxRx.Key | null
+}
+
+export type PropsWithKeyAndChildren<T> = PropsWithChildren<T> & PropsWithKey<T>
 
 export interface ComponentInputPipe<P extends Obj, IP extends P, D extends Obj> extends ComponentInputRender<D, IP> {
-  pipe(props: Input<P & IP>): D
+  pipe(props: Inputs<P & IP>): D
 }
 
 export interface ComponentInputRender<P extends Obj, IP extends P = P> {
   name?: string
   defaultProps?: IP
-  placeholder?(): Element
-  render(data: Data<P>): Element | null
+  placeholder?(): ElementNode
+  render(data: Data<P & IP>): ElementNode
+}
+
+export interface ComponentInstance {
+  context: IContextMap
 }
 
 export interface Component<P extends Obj> {
-  (props: Observable<ComponentProps<P>>): Observable<ElementNode>
+  (props: Inputs<P>): Observable<ElementNode>
   displayName?: string
+  defaultProps?: *
 }
 
 export interface ElementPlacement<T = unknown, E = unknown> {
@@ -89,6 +103,7 @@ export interface ElementPlacement<T = unknown, E = unknown> {
 
 interface RenderBase {
   id: string
+  compareTo(node: IRenderNode)
 }
 
 export type Element<P extends Obj = any, T extends string = any> = IRenderNode<P, T> | string | number | boolean | null
@@ -103,7 +118,7 @@ export interface IRenderElementNode<T extends keyof JsxRx.JSX.IntrinsicElements 
 
 export interface IRenderTextNode extends RenderBase {
   type: typeof VDOMType['TEXT']
-  text: string
+  text: string | null
 }
 
 export interface IRenderComponentNode<P extends Obj = any> extends RenderBase {
@@ -2318,7 +2333,7 @@ declare namespace JsxRx {
       children: {};
     }
 
-    type LibraryManagedAttributes<C, P> = C extends Component<infer CP> ? ComponentProps<CP> : P;
+    type LibraryManagedAttributes<C, P> = C extends Component<infer CP> ? Props<CP> : P;
 
     interface IntrinsicAttributes extends JsxRx.Attributes { }
 

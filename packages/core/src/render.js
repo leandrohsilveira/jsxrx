@@ -1,29 +1,37 @@
 /**
- * @import { Subscription } from "rxjs"
- * @import { Element } from "./jsx.js"
+ * @import { Element, ElementNode } from "./jsx.js"
  */
 
 import { DOMRenderer } from "./dom/renderer.js"
 import { assert } from "./util/assert.js"
 import { createVDOMNode } from "./vdom/vdom.js"
 import { toRenderNode } from "./vdom/render.js"
+import { Subscription } from "rxjs"
+import { ContextMap } from "./context.js"
 
 /**
- * @param {Element} element
+ * @param {ElementNode} element
  * @param {*} target 
- * @returns {Subscription}
+ * @returns {Promise<Subscription>}
  */
-export function render(element, target) {
+export async function render(element, target) {
   assert(target !== null, "Root dom element must not be null")
 
+  const subscription = new Subscription()
+
   const node = toRenderNode(element)
+
+  if (node === null) return subscription
 
   const vdom = createVDOMNode(
     new DOMRenderer(),
     node,
-    { parent: target }
+    { parent: target },
+    { context: new ContextMap() }
   )
 
-  return vdom.subscribe()
+  subscription.add(await vdom.subscribe())
+
+  return subscription
 }
 

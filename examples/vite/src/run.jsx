@@ -5,15 +5,17 @@ const root = document.querySelector('[root]')
 
 if (!root) throw new Error('Root element not found')
 
+/**
+ * @type {import("@jsxrx/core").Component<{}>}
+ */
 const App = component({
   name: 'App',
   pipe() {
     const count = state(0)
     const delayedCount = count.pipe(delay(1000))
     return {
-      time: defer(interval(1000)),
       count: defer(delayedCount),
-      isLoading: loading(delayedCount),
+      isLoading: false,
       increase() {
         count.set(count.value + 1)
       },
@@ -22,13 +24,13 @@ const App = component({
       }
     }
   },
-  render({ count, time, isLoading, increase, decrease }) {
+  render({ count, isLoading, increase, decrease }) {
     return (
       <>
-        <CountDisplay count={count} />
-        <EllapsedTime time={time} />
-        <button type="button" disabled={isLoading} onClick={increase}>Increase</button>
-        <button type="button" disabled={isLoading} onClick={decrease}>Decrease</button>
+        <CountDisplay count={count}>
+          <button type="button" disabled={isLoading} onClick={increase}>Increase</button>
+          <button type="button" disabled={isLoading} onClick={decrease}>Decrease</button>
+        </CountDisplay>
       </>
     )
   },
@@ -38,19 +40,17 @@ const App = component({
 })
 
 /** 
- * @type {import("@jsxrx/core").Component<{ count?: number }>} 
+ * @type {import("@jsxrx/core").Component<import("@jsxrx/core").PropsWithChildren<{ count?: number }>>} 
  */
 const CountDisplay = component({
   name: 'CountDisplay',
-  render: ({ count = 0 }) => <div>The count is {count}</div>,
+  render: ({ count = 0, children }) => (
+    <>
+      <div>The count is {count}</div>
+      {children}
+    </>
+  ),
   placeholder: () => <div>Loading count...</div>
-})
-
-/** @type {import("@jsxrx/core").Component<{ time: number }>} */
-const EllapsedTime = component({
-  name: 'EllapsedTime',
-  render: ({ time }) => <div>Ellapsed time: {time} {time > 1 ? 'seconds' : 'second'}</div>,
-  placeholder: () => <div>Loading time...</div>
 })
 
 render(

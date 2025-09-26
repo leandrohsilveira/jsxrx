@@ -1,7 +1,7 @@
 
 import { _jsx } from "./vdom/render.js"
 
-export const Fragment = Symbol('JsxRxFragment')
+export { Fragment } from "./fragment.js"
 
 export {
   _jsx as jsx,

@@ -1,2 +1,5 @@
 export * from "./component.js"
+export { Context } from "./context.js"
+export * from "./fragment.js"
 export * from "./render.js"
+export * from "./vdom/index.js"

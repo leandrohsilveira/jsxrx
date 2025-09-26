@@ -1,8 +1,10 @@
 /**
- * @import { Component, IRenderComponentNode, IRenderElementNode, IRenderTextNode, Obj, IRenderNode, IRenderFragmentNode, ElementNode } from "../jsx"
+ * @import { Component, IRenderComponentNode, IRenderElementNode, IRenderTextNode, Obj, IRenderNode, IRenderFragmentNode, default as JsxRx, ElementNode } from "../jsx"
  */
 
 import { VDOMType } from "../constants/vdom.js"
+import { asArray } from "../util/array.js"
+import { shallowEqual } from "../util/object.js"
 
 /**
  * @template {Obj} P
@@ -10,7 +12,7 @@ import { VDOMType } from "../constants/vdom.js"
  * @param {string} id 
  * @param {Component<P>} input 
  * @param {P | null} props 
- * @param {...(ElementNode)} children 
+ * @param {ElementNode} children 
  */
 /**
  * @template {Obj} P
@@ -18,7 +20,7 @@ import { VDOMType } from "../constants/vdom.js"
  * @param {string} id 
  * @param {T} input 
  * @param {import("../jsx-runtime.js").JSX.IntrinsicElements[T] | null} props 
- * @param {...(ElementNode)} children 
+ * @param {ElementNode} children 
  */
 /**
  * @template {Obj} P
@@ -26,19 +28,19 @@ import { VDOMType } from "../constants/vdom.js"
  * @param {string} id 
  * @param {T | Component<P>} input 
  * @param {*} props 
- * @param {...(ElementNode)} children 
+ * @param {ElementNode | null | undefined} children 
  */
-export function _jsx(id, input, props, ...children) {
-  if (typeof input === 'string') return new RenderElementNode(id, input, props, ...children.map(toRenderNode))
-  return new RenderComponentNode(id, input, props)
+export function _jsx(id, input, props, children) {
+  if (typeof input === 'string') return new RenderElementNode(id, input, props, ...(asArray(children) ?? []).map(toRenderNode))
+  return new RenderComponentNode(id, input, children === undefined ? props : { ...props, children })
 }
 
 /**
  * @param {string} id 
- * @param {...(ElementNode)} children 
+ * @param {ElementNode} children 
  */
-export function _fragment(id, ...children) {
-  return new RenderFragmentNode(id, ...children.map(toRenderNode))
+export function _fragment(id, children) {
+  return new RenderFragmentNode(id, ...(asArray(children) ?? []).map(toRenderNode))
 }
 
 /**
@@ -50,7 +52,19 @@ export function isRenderNode(value) {
 }
 
 /**
+ * @overload
  * @param {ElementNode} value
+ * @param {number | string} [index=0] 
+ * @returns {IRenderNode}
+ */
+/**
+ * @overload
+ * @param {ElementNode | null} value
+ * @param {number | string} [index=0] 
+ * @returns {IRenderNode | null}
+ */
+/**
+ * @param {ElementNode | null} value
  * @param {number | string} [index=0] 
  * @returns {IRenderNode | null}
  */
@@ -69,7 +83,7 @@ export class RenderTextNode {
   /**
    * @constructor
    * @param {string} id 
-   * @param {string} text 
+   * @param {string | null} text 
    */
   constructor(id, text) {
     this.id = id
@@ -79,12 +93,22 @@ export class RenderTextNode {
   type = VDOMType.TEXT
 
   /**
+   * @param {IRenderNode} node 
+   */
+  compareTo(node) {
+    if (node === null || node === undefined) return false
+    if (node.id !== this.id) return false
+    if (node.type !== VDOMType.TEXT) return false
+    return node.text === this.text
+  }
+
+  /**
    * @static
-   * @param {number | bigint | string | boolean | null | undefined} value
+   * @param {string | number | bigint | boolean | undefined | null} value
    * @param {number | string} [index=0] 
    */
   static of(value, index = 0) {
-    return new RenderTextNode(`${index}:text`, String(value ?? ''))
+    return new RenderTextNode(`${index}:text`, value !== null && value !== undefined ? String(value) : null)
   }
 }
 
@@ -112,6 +136,18 @@ export class RenderElementNode {
   }
 
   type = VDOMType.ELEMENT
+
+  /**
+   * @param {IRenderNode} node 
+   */
+  compareTo(node) {
+    if (node === null || node === undefined) return false
+    if (node.id !== this.id) return false
+    if (node.type !== VDOMType.ELEMENT) return false
+    if (!shallowEqual(node.props, this.props)) return false
+    return shallowEqual(node.children, this.children, compareRenderNode)
+  }
+
 }
 
 /**
@@ -134,6 +170,17 @@ export class RenderComponentNode {
   }
 
   type = VDOMType.COMPONENT
+
+
+  /**
+   * @param {IRenderNode} node 
+   */
+  compareTo(node) {
+    if (node === null || node === undefined) return false
+    if (node.id !== this.id) return false
+    if (node.type !== VDOMType.COMPONENT) return false
+    return compareProps(node.props, this.props)
+  }
 }
 
 /**
@@ -154,4 +201,38 @@ export class RenderFragmentNode {
   }
 
   type = VDOMType.FRAGMENT
+
+  /**
+   * @param {IRenderNode} node 
+   */
+  compareTo(node) {
+    if (node === null || node === undefined) return false
+    if (node.id !== this.id) return false
+    if (node.type !== VDOMType.FRAGMENT) return false
+    return shallowEqual(node.children, this.children, compareRenderNode)
+  }
+}
+
+/**
+ * @param {Obj} a
+ * @param {Obj} b
+ */
+export function compareProps(a, b) {
+  return shallowEqual(a, b, (a, b) => {
+    if (isRenderNode(a) && isRenderNode(b)) return compareRenderNode(a, b)
+    return a === b
+  })
+}
+
+/**
+ * @param {IRenderNode | null} a
+ * @param {IRenderNode | null} b
+ * @returns {boolean}
+ */
+export function compareRenderNode(a, b) {
+  if (a === b) return true
+  if (a === null || b === null) return false
+  if (a.id !== b.id) return false
+  if (a.type !== b.type) return false
+  return a.compareTo(b)
 }
