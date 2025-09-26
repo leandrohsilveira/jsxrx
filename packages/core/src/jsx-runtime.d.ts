@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 
-import JsxRx from "./jsx";
+import JsxRx, { ElementNode } from "./jsx";
 
 export namespace JSX {
   type ElementType<P extends JsxRx.Obj = any> = JsxRx.JSX.ElementType<P>;
@@ -30,7 +30,7 @@ export function jsx(
   type: JsxRx.ElementType,
   props: unknown,
   key: JsxRx.Key | undefined,
-): JsxRx.JsxRxNode;
+): ElementNode;
 
 /**
  * Create a React element.
@@ -41,4 +41,4 @@ export function jsxs(
   type: JsxRx.ElementType,
   props: unknown,
   key: JsxRx.Key | undefined,
-): JsxRx.JsxRxNode;
+): ElementNode;

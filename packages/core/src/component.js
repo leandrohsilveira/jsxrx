@@ -6,7 +6,6 @@
 import { BehaviorSubject, combineLatest, debounceTime, distinctUntilChanged, filter, isObservable, map, merge, of, Subject, Subscription, switchMap, tap } from "rxjs"
 import { ActivityAwareObservable, State, Stream } from "./observable"
 import { combinedKeys, shallowEqual } from "./util/object"
-import { toRenderNode } from "./vdom"
 
 
 /**
@@ -114,8 +113,6 @@ export function component(input) {
         tap(({ values }) => console.debug(`${input.name}.render`, values)),
         map(({ values }) => input.render(/** @type {*} */(values))),
       )
-    ).pipe(
-      map(raw => toRenderNode(raw))
     )
 
   }

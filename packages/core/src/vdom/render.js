@@ -1,5 +1,5 @@
 /**
- * @import { Component, IRenderComponentNode, IRenderElementNode, IRenderTextNode, Obj, IRenderNode, Element, IRenderFragmentNode } from "../jsx"
+ * @import { Component, IRenderComponentNode, IRenderElementNode, IRenderTextNode, Obj, IRenderNode, IRenderFragmentNode, ElementNode } from "../jsx"
  */
 
 import { VDOMType } from "../constants/vdom.js"
@@ -10,7 +10,7 @@ import { VDOMType } from "../constants/vdom.js"
  * @param {string} id 
  * @param {Component<P>} input 
  * @param {P | null} props 
- * @param {...(Element | null)} children 
+ * @param {...(ElementNode)} children 
  */
 /**
  * @template {Obj} P
@@ -18,7 +18,7 @@ import { VDOMType } from "../constants/vdom.js"
  * @param {string} id 
  * @param {T} input 
  * @param {import("../jsx-runtime.js").JSX.IntrinsicElements[T] | null} props 
- * @param {...(Element | null)} children 
+ * @param {...(ElementNode)} children 
  */
 /**
  * @template {Obj} P
@@ -26,7 +26,7 @@ import { VDOMType } from "../constants/vdom.js"
  * @param {string} id 
  * @param {T | Component<P>} input 
  * @param {*} props 
- * @param {...(Element | null)} children 
+ * @param {...(ElementNode)} children 
  */
 export function _jsx(id, input, props, ...children) {
   if (typeof input === 'string') return new RenderElementNode(id, input, props, ...children.map(toRenderNode))
@@ -35,7 +35,7 @@ export function _jsx(id, input, props, ...children) {
 
 /**
  * @param {string} id 
- * @param {...(Element | null)} children 
+ * @param {...(ElementNode)} children 
  */
 export function _fragment(id, ...children) {
   return new RenderFragmentNode(id, ...children.map(toRenderNode))
@@ -50,24 +50,13 @@ export function isRenderNode(value) {
 }
 
 /**
- * @overload
- * @param {Element} value
- * @param {number | string} [index=0] 
- * @returns {IRenderNode}
- */
-/**
- * @overload
- * @param {Element | null} value
- * @param {number | string} [index=0] 
- * @returns {IRenderNode | null}
- */
-/**
- * @param {Element | null} value
+ * @param {ElementNode} value
  * @param {number | string} [index=0] 
  * @returns {IRenderNode | null}
  */
 export function toRenderNode(value, index = 0) {
   if (value === null) return null
+  if (Array.isArray(value)) return new RenderFragmentNode(`fragment:${index}`, ...value.map(toRenderNode))
   return isRenderNode(value) ? value : RenderTextNode.of(value, index)
 }
 
@@ -91,11 +80,11 @@ export class RenderTextNode {
 
   /**
    * @static
-   * @param {string | number | boolean} value
+   * @param {number | bigint | string | boolean | null | undefined} value
    * @param {number | string} [index=0] 
    */
   static of(value, index = 0) {
-    return new RenderTextNode(`${index}:text`, String(value))
+    return new RenderTextNode(`${index}:text`, String(value ?? ''))
   }
 }
 

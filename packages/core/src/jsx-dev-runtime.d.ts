@@ -29,7 +29,7 @@ export function Fragment(
   isStatic: boolean,
   source?: JSXSource,
   self?: unknown,
-): JsxRx.JsxRxNode;
+): JsxRx.ElementNode;
 
 /**
  * Create a React element.
@@ -43,4 +43,4 @@ export function jsxDEV(
   isStatic: boolean,
   source?: JSXSource,
   self?: unknown,
-): JsxRx.JsxRxNode;
+): JsxRx.ElementNode;

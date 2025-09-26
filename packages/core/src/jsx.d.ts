@@ -77,7 +77,7 @@ export interface ComponentInputRender<P extends Obj, IP extends P = P> {
 }
 
 export interface Component<P extends Obj> {
-  (props: Observable<ComponentProps<P>>): Observable<IRenderNode | null>
+  (props: Observable<ComponentProps<P>>): Observable<ElementNode>
   displayName?: string
 }
 
@@ -130,6 +130,16 @@ export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
   remove(node: TextNode | ElementNode, target: ElementNode): void
   getPlacement(node: TextNode | ElementNode): ElementPlacement<TextNode, ElementNode>
 }
+
+export type ElementNode =
+  | IRenderNode
+  | string
+  | number
+  | bigint
+  | ElementNode[]
+  | boolean
+  | null
+  | undefined
 
 /**
  * Used to represent DOM API's where users can either pass
@@ -258,18 +268,10 @@ declare namespace JsxRx {
   }
 
   interface ReactPortal extends ReactElement {
-    children: JsxRxNode;
+    children: ElementNode;
   }
 
-  type JsxRxNode =
-    | IRenderNode
-    | string
-    | number
-    | bigint
-    | Iterable<JsxRxNode>
-    | boolean
-    | null
-    | undefined
+  type JsxRxNode = ElementNode
 
   //
   // Event System
@@ -494,7 +496,7 @@ declare namespace JsxRx {
   interface SVGTextElementAttributes<T> extends SVGProps<T> { }
 
   interface DOMAttributes<T> {
-    children?: JsxRxNode | undefined;
+    children?: ElementNode;
     dangerouslySetInnerHTML?: {
       // Should be InnerHTML['innerHTML'].
       // But unfortunately we're mixing renderer-specific type declarations.

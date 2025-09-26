@@ -8,7 +8,8 @@
     "./packages/*"
   ],
   "scripts": {
-    "test": "vitest"
+    "test": "vitest",
+    "lint": "eslint ."
   },
   "keywords": [],
   "author": "",

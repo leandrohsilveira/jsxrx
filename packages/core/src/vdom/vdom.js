@@ -7,6 +7,7 @@ import { BehaviorSubject, combineLatest, debounceTime, map, shareReplay, Subscri
 import { VDOMType } from "../constants/vdom"
 import { assert } from "../util/assert"
 import { shallowDiff } from "../util/object"
+import { toRenderNode } from "./render"
 
 
 /**
@@ -331,7 +332,7 @@ export class VDOMComponentNode {
     this.props = node.props
     this.#source$ = new BehaviorSubject({ node, placement })
     this.#stream$ = combineLatest({
-      node: node.component(this.#source$.pipe(map(({ node }) => node.props))),
+      node: node.component(this.#source$.pipe(map(({ node }) => node.props))).pipe(map(toRenderNode)),
       placement: this.#source$.pipe(map(({ placement }) => placement))
     }).pipe(
       debounceTime(1),
