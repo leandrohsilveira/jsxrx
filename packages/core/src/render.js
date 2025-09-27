@@ -10,7 +10,7 @@ import { createVDOMNode } from "./vdom/vdom.js"
 
 /**
  * @param {ElementNode} element
- * @param {*} target 
+ * @param {Element | null} target
  * @returns {import("./vdom/types.js").IVDOMNode<Text, Element>}
  */
 export function render(element, target) {
@@ -24,7 +24,6 @@ export function render(element, target) {
     new DOMRenderer(),
     node,
     { parent: target },
-    { context: new ContextMap() }
+    { context: new ContextMap() },
   )
 }
-

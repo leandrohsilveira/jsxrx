@@ -5,18 +5,36 @@
  */
 
 import { assert, shallowDiff } from "@jsxrx/utils"
-import { BehaviorSubject, combineLatest, debounceTime, distinctUntilChanged, filter, isObservable, map, merge, of, shareReplay, Subscription, switchMap } from "rxjs"
+import {
+  BehaviorSubject,
+  combineLatest,
+  debounceTime,
+  distinctUntilChanged,
+  filter,
+  isObservable,
+  map,
+  merge,
+  of,
+  shareReplay,
+  Subscription,
+  switchMap,
+  tap,
+} from "rxjs"
 import { VDOMType } from "../constants/vdom"
 import { ContextMap } from "../context"
-import { compareProps, compareRenderNode, isRenderNode, toRenderNode } from "./render"
-
+import {
+  compareProps,
+  compareRenderNode,
+  isRenderNode,
+  toRenderNode,
+} from "./render"
 
 /**
  * @template T
  * @template E
- * @param {IRenderer<T, E>} renderer 
- * @param {IRenderNode<*, *>} node 
- * @param {ElementPlacement} placement 
+ * @param {IRenderer<T, E>} renderer
+ * @param {IRenderNode} node
+ * @param {ElementPlacement} placement
  * @param {ComponentInstance} instance
  * @returns {IVDOMNode<T, E>}
  */
@@ -40,84 +58,96 @@ export function createVDOMNode(renderer, node, placement, instance) {
  */
 class Input {
   /**
-   * @param {ComponentInstance} instance 
-   * @param {P} props 
+   * @param {ComponentInstance} instance
+   * @param {P} props
    * @param {IP} [defaultProps]
    */
   constructor({ context }, props, defaultProps) {
     this.context = context
     this.#props$ = new BehaviorSubject(props)
     this.defaultProps = defaultProps
-    this.props$ = /** @type {Observable<P & IP>} */(this.#props$.pipe(
-      switchMap(props =>
-        combineLatest(
-          Object.fromEntries(
-            Object.entries(props).map(([key, value]) => {
-              if (isObservable(value)) return [key, value]
-              return [key, of(value)]
-            })
-          )
-        )
-      ),
-      debounceTime(1),
-      distinctUntilChanged(compareProps)
-    ))
+    this.props$ = /** @type {Observable<P & IP>} */ (
+      this.#props$.pipe(
+        switchMap(props =>
+          combineLatest(
+            Object.fromEntries(
+              Object.entries(props).map(([key, value]) => {
+                if (isObservable(value)) return [key, value]
+                return [key, of(value)]
+              }),
+            ),
+          ),
+        ),
+        debounceTime(1),
+        distinctUntilChanged(compareProps),
+      )
+    )
     this.#set(props)
   }
 
   #props$
 
-  /** @type {Obj<Observable<*>>} */
+  /** @type {Record<string | symbol, Observable<*>>} */
   #map = {}
 
-  props = /** @type {Inputs<P & IP>['props']} */(new Proxy(this.#map, {
-    get: (target, prop) => {
-      if (prop in target) {
-        return target[prop].pipe(
-          source$ => merge(
-            source$.pipe(
-              filter(value => isObservable(value)),
-              switchMap(value => value)
-            ),
-            source$.pipe(
-              filter(value => !isObservable(value))
-            )
-          ),
-          distinctUntilChanged((a, b) => {
-            if (isRenderNode(a) && isRenderNode(b)) return compareRenderNode(a, b)
-            return a === b
-          }),
-          debounceTime(1)
-        )
-      }
-      return of(this.defaultProps?.[prop])
-    },
-    ownKeys: (target) => Object.keys(target),
-  }))
+  props = /** @type {Inputs<P & IP>['props']} */ (
+    new Proxy(this.#map, {
+      get: (target, prop) => {
+        if (prop in target) {
+          return target[prop].pipe(
+            source$ =>
+              merge(
+                source$.pipe(
+                  filter(value => isObservable(value)),
+                  switchMap(value => value),
+                ),
+                source$.pipe(filter(value => !isObservable(value))),
+              ),
+            distinctUntilChanged((a, b) => {
+              if (isRenderNode(a) && isRenderNode(b))
+                return compareRenderNode(a, b)
+              return a === b
+            }),
+            debounceTime(1),
+          )
+        }
+        return of(/** @type {*} */ (this.defaultProps)?.[prop])
+      },
+      ownKeys: target => Object.keys(target),
+    })
+  )
 
   /**
-   * @param {P} props 
+   * @param {P} props
    */
   apply(props) {
     this.#props$.next(props)
   }
 
   /**
-   * @param {P} values 
+   * @param {P} values
    */
   #set(values) {
     for (const [key, value] of Object.entries(values)) {
       if (!this.#map[key]) {
-        this.#map[key] = isObservable(value) ? value : new BehaviorSubject(value)
+        this.#map[key] = isObservable(value)
+          ? value
+          : new BehaviorSubject(value)
         continue
       }
       if (this.#map[key] instanceof BehaviorSubject) {
-        assert(!isObservable(value), `Can't switch from normal value to observable value of prop: ${key}`)
+        assert(
+          !isObservable(value),
+          `Can't switch from normal value to observable value of prop: ${key}`,
+        )
         this.#map[key].next(value)
         continue
       }
       if (isObservable(this.#map[key]) && isObservable(value)) {
-        assert(this.#map[key] === value, `Can't change observable value of prop: ${key}`)
+        assert(
+          this.#map[key] === value,
+          `Can't change observable value of prop: ${key}`,
+        )
       }
     }
   }
@@ -131,9 +161,8 @@ class Input {
  * @implements {IVDOMChildrenBase<N, T, E>}
  */
 class VDOMChildrenBase {
-
-  /** 
-   * @param {IRenderer<T, E>} renderer 
+  /**
+   * @param {IRenderer<T, E>} renderer
    * @param {ComponentInstance} instance
    */
   constructor(renderer, instance) {
@@ -152,40 +181,57 @@ class VDOMChildrenBase {
   /**
    * @abstract
    * @param {Record<string, IVDOMNode<T, E>>} _vdom
-   * @param {{ previous: string | null, next: string | null }} _simblings 
-   * @param {ElementPlacement<T, E>} _parentPlacement 
+   * @param {{ previous: string | null, next: string | null }} _simblings
+   * @param {ElementPlacement<T, E>} _parentPlacement
    * @returns {ElementPlacement<T, E>}
    */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   createChildPlacement(_vdom, _simblings, _parentPlacement) {
-    throw new Error('Abstract method: should be implemented by extending classes')
+    throw new Error(
+      "Abstract method: should be implemented by extending classes",
+    )
   }
 
   /**
-   * @param {Record<string, IVDOMNode<T, E>>} vdom 
-   * @param {N} node 
-   * @param {ElementPlacement<T, E>} placement 
+   * @param {Record<string, IVDOMNode<T, E>>} vdom
+   * @param {N} node
+   * @param {ElementPlacement<T, E>} placement
    */
   async handleChildren(vdom, node, placement) {
-    const { added, removed, keys, simblings } = detectChildrenChanges(node.children, this.children)
+    const { added, removed, keys, simblings } = detectChildrenChanges(
+      node.children,
+      this.children,
+    )
 
     for (const id of removed) {
       assert(vdom[id], `VDOM Element with id "${id}" not found`)
-      assert(this.#subscriptions[id], `VDOM Subscription with id "${id}" not found`)
+      assert(
+        this.#subscriptions[id],
+        `VDOM Subscription with id "${id}" not found`,
+      )
       this.#subscriptions[id].unsubscribe()
-      console.debug('Removed VDOM element', id)
+      console.debug("Removed VDOM element", id)
       delete vdom[id]
       delete this.#subscriptions[id]
     }
 
     for (const id of keys) {
       const { previous, next } = simblings[id]
-      const childPlacement = this.createChildPlacement(vdom, { previous, next }, placement)
+      const childPlacement = this.createChildPlacement(
+        vdom,
+        { previous, next },
+        placement,
+      )
       if (added.has(id)) {
         assert(!vdom[id], `There is already a VDOM Element with id "${id}"`)
-        vdom[id] = createVDOMNode(this.#renderer, node.children[id], childPlacement, this.instance)
+        vdom[id] = createVDOMNode(
+          this.#renderer,
+          node.children[id],
+          childPlacement,
+          this.instance,
+        )
         this.#subscriptions[id] = await vdom[id].subscribe()
-        console.debug('Added VDOM element', id)
+        console.debug("Added VDOM element", id)
         continue
       }
 
@@ -199,7 +245,9 @@ class VDOMChildrenBase {
   }
 
   unsubscribeChildren() {
-    Object.values(this.#subscriptions).forEach(subscription => subscription.unsubscribe())
+    Object.values(this.#subscriptions).forEach(subscription =>
+      subscription.unsubscribe(),
+    )
     this.#subscriptions = {}
     this.children = {}
   }
@@ -211,25 +259,23 @@ class VDOMChildrenBase {
  * @implements {IVDOMNode<T, E>}
  */
 export class VDOMTextNode {
-
   /**
-   * @param {IRenderer<T, E>} renderer 
-   * @param {IRenderTextNode} node 
-   * @param {ElementPlacement} placement 
+   * @param {IRenderer<T, E>} renderer
+   * @param {IRenderTextNode} node
+   * @param {ElementPlacement} placement
    */
   constructor(renderer, node, placement) {
     this.#renderer = renderer
     this.id = node.id
     this.text = node.text
-    this.#element = renderer.createTextNode(node.text ?? '')
+    this.#element = renderer.createTextNode(node.text ?? "")
     this.#stream = new BehaviorSubject({ node, placement })
-
   }
 
   #element
   #stream
   #renderer
-  name = 'text'
+  name = "text"
   placed = false
 
   async firstElement() {
@@ -241,7 +287,7 @@ export class VDOMTextNode {
   }
 
   /**
-   * @param {IRenderTextNode} node 
+   * @param {IRenderTextNode} node
    * @param {ElementPlacement} placement
    */
   apply(node, placement) {
@@ -257,20 +303,18 @@ export class VDOMTextNode {
             await this.#renderer.place(this.#element, placement)
             console.debug(`Placed Text Node ${this.id}`, this.#element)
             this.placed = true
-            subscription.add(
-              () => {
-                this.#renderer.remove(this.#element, placement.parent)
-                console.debug(`Removed Text Node ${this.id}`)
-              }
-            )
+            subscription.add(() => {
+              this.#renderer.remove(this.#element, placement.parent)
+              console.debug(`Removed Text Node ${this.id}`)
+            })
             resolve(null)
           }
           if (node.text !== this.text) {
-            this.#renderer.setText(node.text ?? '', this.#element)
+            this.#renderer.setText(node.text ?? "", this.#element)
             this.text = node.text
           }
-        })
-      )
+        }),
+      ),
     )
 
     return subscription
@@ -283,11 +327,10 @@ export class VDOMTextNode {
  * @extends {VDOMChildrenBase<IRenderElementNode, T, E>}
  */
 export class VDOMElementNode extends VDOMChildrenBase {
-
   /**
-   * @param {IRenderer<T, E>} renderer 
-   * @param {IRenderElementNode<*>} node 
-   * @param {ElementPlacement<T, E>} placement 
+   * @param {IRenderer<T, E>} renderer
+   * @param {IRenderElementNode} node
+   * @param {ElementPlacement<T, E>} placement
    * @param {ComponentInstance} instance
    */
   constructor(renderer, node, placement, instance) {
@@ -325,8 +368,8 @@ export class VDOMElementNode extends VDOMChildrenBase {
   }
 
   /**
-   * @param {IRenderElementNode<*>} node 
-   * @param {ElementPlacement} placement 
+   * @param {IRenderElementNode} node
+   * @param {ElementPlacement} placement
    */
   apply(node, placement) {
     this.#stream$.next({ node, placement })
@@ -345,13 +388,18 @@ export class VDOMElementNode extends VDOMChildrenBase {
 
           const changedProps = shallowDiff(node.props, this.props)
           if (changedProps.length > 0) {
-            const { props, events } = this.#renderer.determinePropsAndEvents(changedProps)
+            const { props, events } =
+              this.#renderer.determinePropsAndEvents(changedProps)
             for (const name of props) {
               this.#renderer.setProperty(this.#element, name, node.props[name])
             }
             for (const name of events) {
               this.#events[name]?.()
-              this.#events[name] = this.#renderer.listen(this.#element, name, node.props[name])
+              this.#events[name] = this.#renderer.listen(
+                this.#element,
+                name,
+                node.props[name],
+              )
             }
           }
 
@@ -360,37 +408,39 @@ export class VDOMElementNode extends VDOMChildrenBase {
           if (!this.placed) {
             this.placed = true
             await this.#renderer.place(this.#element, placement)
-            console.debug(`Placed element ${this.id} (tag: ${this.name})`, this.#element)
-            subscription.add(
-              async () => {
-                await this.#vdom
-                this.#stream$.complete()
-                this.#renderer.remove(this.#element, placement.parent)
-                Object.values(this.#events).map(unsubscribe => unsubscribe())
-                this.unsubscribeChildren()
-                this.#vdom = Promise.resolve({})
-                console.debug(`Removed element ${this.id} (tag: ${this.name})`, this.#element)
-              }
+            console.debug(
+              `Placed element ${this.id} (tag: ${this.name})`,
+              this.#element,
             )
+            subscription.add(async () => {
+              await this.#vdom
+              this.#stream$.complete()
+              this.#renderer.remove(this.#element, placement.parent)
+              Object.values(this.#events).map(unsubscribe => unsubscribe())
+              this.unsubscribeChildren()
+              this.#vdom = Promise.resolve({})
+              console.debug(
+                `Removed element ${this.id} (tag: ${this.name})`,
+                this.#element,
+              )
+            })
             resolve(null)
-          } {
+          }
+          {
             detectAndMove(this.#renderer, this.#element, placement)
           }
 
           rendering.resolve(vdom)
-
-        })
-      )
-
+        }),
+      ),
     )
 
     return subscription
   }
 
-
   /**
    * @param {Record<string, IVDOMNode<T, E>>} vdom
-   * @param {{ previous: string | null, next: string | null }} simblings 
+   * @param {{ previous: string | null, next: string | null }} simblings
    * @returns {ElementPlacement<T, E>}
    */
   createChildPlacement(vdom, { next, previous }) {
@@ -398,15 +448,14 @@ export class VDOMElementNode extends VDOMChildrenBase {
       parent: this.#element,
       next: async () => {
         if (!next) return null
-        return await vdom[next]?.firstElement() ?? null
+        return (await vdom[next]?.firstElement()) ?? null
       },
       previous: async () => {
         if (!previous) return null
-        return await vdom[previous]?.lastElement() ?? null
-      }
+        return (await vdom[previous]?.lastElement()) ?? null
+      },
     }
   }
-
 }
 
 /**
@@ -416,13 +465,16 @@ export class VDOMElementNode extends VDOMChildrenBase {
  */
 export class VDOMComponentNode {
   /**
-   * @param {IRenderer<T, E>} renderer 
-   * @param {IRenderComponentNode<*>} node
-   * @param {ElementPlacement<T, E>} placement 
+   * @param {IRenderer<T, E>} renderer
+   * @param {IRenderComponentNode} node
+   * @param {ElementPlacement<T, E>} placement
    * @param {ComponentInstance} upstream
    */
   constructor(renderer, node, placement, upstream) {
-    assert(upstream.context instanceof ContextMap, "component upstream instance context property should be instance of ContextMap class")
+    assert(
+      upstream.context instanceof ContextMap,
+      "component upstream instance context property should be instance of ContextMap class",
+    )
     this.instance = { context: upstream.context.downstream() }
     this.#renderer = renderer
     this.id = node.id
@@ -434,7 +486,8 @@ export class VDOMComponentNode {
       debounceTime(1),
       map(toRenderNode),
       distinctUntilChanged(compareRenderNode),
-      shareReplay()
+      tap(() => console.debug(`${node.name} rendered`)),
+      shareReplay(),
     )
   }
 
@@ -451,16 +504,16 @@ export class VDOMComponentNode {
 
   async firstElement() {
     await this.#subscription
-    return await this.child?.firstElement() ?? null
+    return (await this.child?.firstElement()) ?? null
   }
 
   async lastElement() {
     await this.#subscription
-    return await this.child?.lastElement() ?? null
+    return (await this.child?.lastElement()) ?? null
   }
 
   /**
-   * @param {IRenderComponentNode<*>} node 
+   * @param {IRenderComponentNode} node
    * @param {ElementPlacement<T, E>} placement
    */
   apply(node, placement) {
@@ -473,39 +526,47 @@ export class VDOMComponentNode {
     const subscription = new Subscription()
     await new Promise(resolve =>
       subscription.add(
-        this.#stream$.subscribe(async (node) => {
+        this.#stream$.subscribe(async node => {
           if (!this.child && !node) return
           if (this.child && (!node || node.id !== this.child.id)) {
             const componentSub = await this.#subscription
-            assert(componentSub, `Component child subscription not found for component ${this.name} (${this.id})`)
+            assert(
+              componentSub,
+              `Component child subscription not found for component ${this.name} (${this.id})`,
+            )
             componentSub.unsubscribe()
             subscription.remove(componentSub)
             this.child = null
             this.#subscription = null
           }
           if (!this.child && node) {
-            this.child = createVDOMNode(this.#renderer, node, this.placement, this.instance)
+            this.child = createVDOMNode(
+              this.#renderer,
+              node,
+              this.placement,
+              this.instance,
+            )
             this.#subscription = this.child.subscribe()
             subscription.add(await this.#subscription)
             subscription.add(() => {
               // TODO: add unmount logic
-              console.debug('Component VDOM Node destroyed', this)
+              console.debug("Component VDOM Node destroyed", this)
             })
             resolve(null)
-            console.debug(`VDOM Component Child added: ${this.child.id} (${this.child.name})`)
+            console.debug(
+              `VDOM Component Child added: ${this.child.id} (${this.child.name})`,
+            )
             return
           }
           if (this.child && node) {
             this.child.apply(node, this.placement)
           }
-        })
-      )
+        }),
+      ),
     )
     return subscription
   }
-
 }
-
 
 /**
  * @template T
@@ -515,9 +576,9 @@ export class VDOMComponentNode {
  */
 export class VDOMFragmentNode extends VDOMChildrenBase {
   /**
-   * @param {IRenderer<T, E>} renderer 
-   * @param {IRenderFragmentNode} node 
-   * @param {ElementPlacement<T, E>} placement 
+   * @param {IRenderer<T, E>} renderer
+   * @param {IRenderFragmentNode} node
+   * @param {ElementPlacement<T, E>} placement
    * @param {ComponentInstance} instance
    */
   constructor(renderer, node, placement, instance) {
@@ -526,7 +587,7 @@ export class VDOMFragmentNode extends VDOMChildrenBase {
     this.#stream$ = new BehaviorSubject({ node, placement })
   }
 
-  name = 'Fragment'
+  name = "Fragment"
 
   #stream$
 
@@ -540,18 +601,20 @@ export class VDOMFragmentNode extends VDOMChildrenBase {
 
   async firstElement() {
     const vdom = await this.#vdom
-    return await vdom[this.#keys[0]]?.firstElement() ?? null
+    return (await vdom[this.#keys[0]]?.firstElement()) ?? null
   }
 
   async lastElement() {
     const vdom = await this.#vdom
     if (this.#keys.length === 0) return null
-    return await vdom[this.#keys[this.#keys.length - 1]]?.lastElement() ?? null
+    return (
+      (await vdom[this.#keys[this.#keys.length - 1]]?.lastElement()) ?? null
+    )
   }
 
   /**
-   * @param {IRenderFragmentNode} node 
-   * @param {ElementPlacement<T, E>} placement 
+   * @param {IRenderFragmentNode} node
+   * @param {ElementPlacement<T, E>} placement
    */
   apply(node, placement) {
     this.#stream$.next({ node, placement })
@@ -573,20 +636,18 @@ export class VDOMFragmentNode extends VDOMChildrenBase {
 
           if (!this.placed) {
             this.placed = true
-            subscription.add(
-              () => {
-                this.#stream$.complete()
-                this.unsubscribeChildren()
-                this.#vdom = Promise.resolve({})
-                this.#keys = []
-              }
-            )
+            subscription.add(() => {
+              this.#stream$.complete()
+              this.unsubscribeChildren()
+              this.#vdom = Promise.resolve({})
+              this.#keys = []
+            })
             resolve(null)
           }
 
           rendering.resolve(vdom)
-        })
-      )
+        }),
+      ),
     )
 
     return subscription
@@ -594,31 +655,36 @@ export class VDOMFragmentNode extends VDOMChildrenBase {
 
   /**
    * @param {Record<string, IVDOMNode<T, E>>} vdom
-   * @param {{ previous: string | null, next: string | null }} simblings 
-   * @param {ElementPlacement<T, E>} placement 
+   * @param {{ previous: string | null, next: string | null }} simblings
+   * @param {ElementPlacement<T, E>} placement
    * @returns {ElementPlacement<T, E>}
    */
   createChildPlacement(vdom, { previous, next }, placement) {
     return {
       parent: placement.parent,
       next: async () => {
-        if (!next) return await placement.next?.() ?? null
-        return await vdom[next]?.firstElement() ?? await placement.next?.() ?? null
+        if (!next) return (await placement.next?.()) ?? null
+        return (
+          (await vdom[next]?.firstElement()) ??
+          (await placement.next?.()) ??
+          null
+        )
       },
       previous: async () => {
-        if (!previous) return await placement.previous?.() ?? null
-        return await vdom[previous]?.lastElement() ?? await placement.previous?.() ?? null
-      }
+        if (!previous) return (await placement.previous?.()) ?? null
+        return (
+          (await vdom[previous]?.lastElement()) ??
+          (await placement.previous?.()) ??
+          null
+        )
+      },
     }
   }
-
 }
 
-
-
 /**
- * @param {Obj} nextState 
- * @param {Obj} previousState 
+ * @param {Obj} nextState
+ * @param {Obj} previousState
  */
 function detectChildrenChanges(nextState, previousState) {
   const keys = Object.keys(nextState)
@@ -656,35 +722,36 @@ function detectChildrenChanges(nextState, previousState) {
     removed: Array.from(removed),
     keys,
     previous,
-    simblings
+    simblings,
   }
-
 }
 
 /**
  * @template T
  * @template E
  * @template {T | E} EL
- * @param {IRenderer<T, E>} renderer 
- * @param {EL} element 
- * @param {ElementPlacement<T, E>} placement 
+ * @param {IRenderer<T, E>} renderer
+ * @param {EL} element
+ * @param {ElementPlacement<T, E>} placement
  */
 async function detectAndMove(renderer, element, placement) {
   const current = renderer.getPlacement(element)
-  const currentPrev = await current.previous?.() ?? null
-  const currentNext = await current.next?.() ?? null
+  const currentPrev = (await current.previous?.()) ?? null
+  const currentNext = (await current.next?.()) ?? null
 
-  const newPlacementPrev = await placement.previous?.() ?? null
-  const newPlacementNext = await placement.next?.() ?? null
+  const newPlacementPrev = (await placement.previous?.()) ?? null
+  const newPlacementNext = (await placement.next?.()) ?? null
 
   if (currentPrev !== newPlacementPrev) {
-    return await renderer.move(element, { parent: placement.parent, previous: placement.previous })
+    return await renderer.move(element, {
+      parent: placement.parent,
+      previous: placement.previous,
+    })
   }
   if (currentNext && currentNext !== newPlacementNext) {
-    return await renderer.move(element, { parent: placement.parent, next: placement.next })
+    return await renderer.move(element, {
+      parent: placement.parent,
+      next: placement.next,
+    })
   }
 }
-
-
-
-

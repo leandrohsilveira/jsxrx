@@ -3,9 +3,8 @@
  */
 
 /**
- * @template {Obj} T
- * @param {T} a 
- * @param {T} b 
+ * @param {*} a
+ * @param {*} b
  * @param {(a: *, b: *) => boolean} [comparator]
  */
 export function shallowEqual(a, b, comparator = (a, b) => a === b) {
@@ -23,8 +22,8 @@ export function shallowEqual(a, b, comparator = (a, b) => a === b) {
 }
 
 /**
- * @param {Obj} a 
- * @param {Obj} b 
+ * @param {*} a
+ * @param {*} b
  * @returns {string[]}
  */
 export function shallowDiff(a, b) {
@@ -34,15 +33,10 @@ export function shallowDiff(a, b) {
 }
 
 /**
- * @param {Obj} obj1 
- * @param {Obj} obj2 
+ * @param {Obj} obj1
+ * @param {Obj} obj2
  * @returns {string[]}
  */
 export function combinedKeys(obj1, obj2) {
-  return Array.from(
-    new Set([
-      ...Object.keys(obj1),
-      ...Object.keys(obj2),
-    ])
-  )
+  return Array.from(new Set([...Object.keys(obj1), ...Object.keys(obj2)]))
 }
