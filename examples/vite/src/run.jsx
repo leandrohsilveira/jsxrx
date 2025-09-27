@@ -1,9 +1,7 @@
-import { component, defer, loading, render, state } from "@jsxrx/core"
-import { delay, interval } from "rxjs"
+import { component, defer, render, state } from "@jsxrx/core"
+import { delay } from "rxjs"
 
 const root = document.querySelector('[root]')
-
-if (!root) throw new Error('Root element not found')
 
 /**
  * @type {import("@jsxrx/core").Component<{}>}
@@ -53,7 +51,11 @@ const CountDisplay = component({
   placeholder: () => <div>Loading count...</div>
 })
 
-render(
+const vdom = render(
   <App />,
   root
 )
+
+await vdom.subscribe()
+
+console.log('VDOM Ready', vdom)

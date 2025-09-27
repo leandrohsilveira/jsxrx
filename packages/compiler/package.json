@@ -1,12 +1,16 @@
 {
   "$schema": "https://www.schemastore.org/package.json",
-  "name": "@jsxrx/utils",
+  "name": "@jsxrx/compiler",
   "version": "1.0.0",
   "type": "module",
-  "main": "index.js",
-  "types": "index.d.ts",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@jsxrx/utils": "*",
+    "zimmerframe": "^1.1.4"
   },
   "keywords": [],
   "author": "",
@@ -14,8 +18,8 @@
   "description": "",
   "exports": {
     ".": {
-      "types": "./index.d.ts",
-      "default": "./index.js"
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
     }
   }
 }

@@ -1,21 +1,20 @@
 {
   "$schema": "https://www.schemastore.org/package.json",
-  "name": "@jsxrx/utils",
+  "name": "@jsxrx/vite-plugin",
   "version": "1.0.0",
   "type": "module",
-  "main": "index.js",
-  "types": "index.d.ts",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@jsxrx/compiler": "*",
+    "@jsxrx/utils": "*",
+    "escodegen": "^2.1.0"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
-  "exports": {
-    ".": {
-      "types": "./index.d.ts",
-      "default": "./index.js"
-    }
-  }
+  "description": ""
 }

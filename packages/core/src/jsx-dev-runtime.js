@@ -24,9 +24,9 @@ export function jsxDEV(
   source
 ) {
   try {
-    if (tag === Fragment) return _fragment(genId('fragment', source, key), asArray(children))
+    if (tag === Fragment) return _fragment(genId('fragment', source), asArray(children), key)
     const name = typeof tag === 'string' ? tag : 'component'
-    return _jsx(genId(name, source, key), tag, props, asArray(children))
+    return _jsx(genId(name, source), tag, props, asArray(children), key)
   } catch (error) {
     const cause = error instanceof Error && error.cause;
     console.error(`Error encountered while rendering ${tag}`, {
@@ -41,8 +41,7 @@ export function jsxDEV(
 /**
  * @param {string} name 
  * @param {import("./jsx-dev-runtime.js").JSXSource} source
- * @param {unknown} key 
  */
-function genId(name, { lineNumber, columnNumber }, key) {
-  return String(key ?? `${lineNumber}:${columnNumber}:${name}`)
+function genId(name, { lineNumber, columnNumber }) {
+  return `${lineNumber}:${columnNumber}:${name}`
 }

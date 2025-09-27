@@ -1,10 +1,6 @@
 import { defineConfig } from "vite";
+import { jsxRX } from "@jsxrx/vite-plugin"
 
 export default defineConfig({
-  esbuild: {
-    jsx: 'automatic',
-    jsxImportSource: '@jsxrx/core',
-    jsxFactory: '_jsx',
-    jsxFragment: '_jsxs',
-  }
+  plugins: [jsxRX()]
 })

@@ -28,18 +28,29 @@ import { VDOMType } from "../constants/vdom.js"
  * @param {T | Component<P>} input 
  * @param {*} props 
  * @param {ElementNode | null | undefined} children 
+ * @param {*} key 
  */
-export function _jsx(id, input, props, children) {
-  if (typeof input === 'string') return new RenderElementNode(id, input, props, ...(asArray(children) ?? []).map(toRenderNode))
-  return new RenderComponentNode(id, input, children === undefined ? props : { ...props, children })
+export function _jsx(id, input, props, children, key) {
+  if (typeof input === 'string') return new RenderElementNode(genId(id, key), input, props, (asArray(children) ?? []).map(toRenderNode), key)
+  return new RenderComponentNode(genId(id, key), input, children === undefined ? props : { ...props, children }, key)
+}
+
+/**
+ * @param {string} id 
+ * @param {*} key 
+ */
+function genId(id, key) {
+  if (key === null || key === undefined) return id
+  return `${id}:${key}`
 }
 
 /**
  * @param {string} id 
  * @param {ElementNode} children 
+ * @param {*} key
  */
-export function _fragment(id, children) {
-  return new RenderFragmentNode(id, ...(asArray(children) ?? []).map(toRenderNode))
+export function _fragment(id, children, key) {
+  return new RenderFragmentNode(id, (asArray(children) ?? []).map(toRenderNode), key)
 }
 
 /**
@@ -69,7 +80,7 @@ export function isRenderNode(value) {
  */
 export function toRenderNode(value, index = 0) {
   if (value === null) return null
-  if (Array.isArray(value)) return new RenderFragmentNode(`fragment:${index}`, ...value.map(toRenderNode))
+  if (Array.isArray(value)) return new RenderFragmentNode(`fragment:${index}`, value.map(toRenderNode), index)
   return isRenderNode(value) ? value : RenderTextNode.of(value, index)
 }
 
@@ -107,7 +118,7 @@ export class RenderTextNode {
    * @param {number | string} [index=0] 
    */
   static of(value, index = 0) {
-    return new RenderTextNode(`${index}:text`, value !== null && value !== undefined ? String(value) : null)
+    return new RenderTextNode(`text:${index}`, value !== null && value !== undefined ? String(value) : null)
   }
 }
 
@@ -123,11 +134,13 @@ export class RenderElementNode {
    * @param {string} id 
    * @param {T} tag 
    * @param {import("../jsx-runtime.js").JSX.IntrinsicElements[T] | null} props
-   * @param {...(IRenderNode | null)} children 
+   * @param {(IRenderNode | null)[]} children 
+   * @param {*} key 
    */
-  constructor(id, tag, props, ...children) {
+  constructor(id, tag, props, children, key) {
     this.id = id
     this.tag = tag
+    this.key = key
     this.props = /** @type {import("../jsx-runtime.js").JSX.IntrinsicElements[T]} */(props ?? {})
     this.children = Object.fromEntries(
       children.filter(child => child !== null).map(child => [child.id, child])
@@ -160,10 +173,12 @@ export class RenderComponentNode {
    * @param {string} id 
    * @param {Component<P>} component 
    * @param {P | null} props 
+   * @param {*} key 
    */
-  constructor(id, component, props) {
+  constructor(id, component, props, key) {
     this.id = id
     this.component = component
+    this.key = key
     this.props = /** @type {P} */(props ?? {})
     this.name = component.displayName ?? 'anonymous'
   }
@@ -190,10 +205,12 @@ export class RenderFragmentNode {
 
   /**
    * @param {string} id 
-   * @param {...(IRenderNode | null)} children 
+   * @param {(IRenderNode | null)[]} children 
+   * @param {*} key
    */
-  constructor(id, ...children) {
+  constructor(id, children, key) {
     this.id = id
+    this.key = key
     this.children = Object.fromEntries(
       children.filter(child => child !== null).map(child => [child.id, child])
     )
