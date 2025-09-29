@@ -11,9 +11,12 @@ export type Notify<T, E> = (vdom: IVDOMNode<T, E>) => void
 export interface IVDOMNode<T, E> {
   id: string
   name: string
+  placed: boolean
+  remove(): Promise<void>
+  place(): Promise<void>
   firstElement(): Promise<T | E | null>
   lastElement(): Promise<T | E | null>
-  apply(node: IRenderNode, placement: ElementPlacement): void
+  apply(node: IRenderNode, placement: ElementPlacement<T, E>): void
   subscribe(notify?: Notify<T, E>): Promise<Subscription>
 }
 

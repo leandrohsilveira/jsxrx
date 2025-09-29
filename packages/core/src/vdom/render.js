@@ -203,7 +203,7 @@ export class RenderComponentNode {
     this.component = component
     this.key = key
     this.props = props ?? {}
-    this.name = component.displayName ?? "anonymous"
+    this.name = component.displayName ?? component.name
   }
 
   type = VDOMType.COMPONENT

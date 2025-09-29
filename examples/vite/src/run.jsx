@@ -1,59 +1,52 @@
-import { component, defer, render, state } from "@jsxrx/core"
-import { delay, of } from "rxjs"
+import { render } from "@jsxrx/core"
+import { BehaviorSubject, delay, map, switchMap, tap } from "rxjs"
+
+function App() {
+  const count = new BehaviorSubject(0)
+
+  function increase() {
+    count.next(count.value + 1)
+  }
+
+  function decrease() {
+    count.next(count.value - 1)
+  }
+
+  return (
+    <CountDisplay
+      count={count.pipe(
+        delay(1000),
+        tap(() => console.log("state emitted")),
+      )}
+    >
+      <button type="button" onClick={increase}>
+        Increase
+      </button>
+      <button type="button" onClick={decrease}>
+        Decrease
+      </button>
+    </CountDisplay>
+  )
+}
+
+/**
+ * @param {import("rxjs").Observable<import("@jsxrx/core").Inputs<import("@jsxrx/core").PropsWithChildren<{ count: number }>>>} input$
+ */
+function CountDisplay(input$) {
+  return input$.pipe(
+    switchMap(input => input.props$),
+    map(({ count = 0, children }) => (
+      <>
+        <div>The count is {count}</div>
+        {children}
+      </>
+    )),
+  )
+}
+
+CountDisplay.placeholder = () => <div>Loading count...</div>
 
 const root = document.querySelector("[root]")
-
-/**
- * @type {import("@jsxrx/core").Component<{}>}
- */
-const App = component({
-  name: "App",
-  pipe() {
-    const count = state(0)
-    const delayedCount = count.pipe(delay(1000))
-    return of({
-      count: defer(delayedCount),
-      isLoading: false,
-      increase() {
-        count.set(count.value + 1)
-      },
-      decrease() {
-        count.set(count.value - 1)
-      },
-    })
-  },
-  render({ count, isLoading, increase, decrease }) {
-    return (
-      <>
-        <CountDisplay count={count}>
-          <button type="button" disabled={isLoading} onClick={increase}>
-            Increase
-          </button>
-          <button type="button" disabled={isLoading} onClick={decrease}>
-            Decrease
-          </button>
-        </CountDisplay>
-      </>
-    )
-  },
-  placeholder() {
-    return <div>Loading Application...</div>
-  },
-})
-
-/**
- * @type {import("@jsxrx/core").Component<import("@jsxrx/core").PropsWithChildren<{ count?: number }>>}
- */
-const CountDisplay = component({
-  name: "CountDisplay",
-  render: ({ count = 0, children }) => (
-    <>
-      <div>The count is {count}</div>
-      {children}
-    </>
-  ),
-  placeholder: () => <div>Loading count...</div>,
-})
 
 const vdom = render(<App />, root)
 

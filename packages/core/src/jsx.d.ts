@@ -94,7 +94,7 @@ export interface ComponentInstance {
 }
 
 export interface Component<P> {
-  (props: Observable<Inputs<P>>): Observable<ElementNode>
+  (props: Observable<Inputs<P>>): ElementNode | Observable<ElementNode>
   displayName?: string
   defaultProps?: *
   placeholder?(): ElementNode
@@ -162,6 +162,7 @@ export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
   remove(node: TextNode | ElementNode, target: ElementNode): void
   getPlacement(
     node: TextNode | ElementNode,
+    parent: ElementNode,
   ): ElementPlacement<TextNode, ElementNode>
 }
 

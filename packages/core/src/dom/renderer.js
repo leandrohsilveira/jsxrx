@@ -37,7 +37,8 @@ export class DOMRenderer {
    * @param {unknown} value
    */
   setProperty(element, name, value) {
-    /** @type {*} */ ;(element)[name] = value
+    const el = /** @type {*} */ (element)
+    el[name] = value
   }
 
   /**
@@ -97,12 +98,16 @@ export class DOMRenderer {
 
   /**
    * @param {Text | Element} node
+   * @param {Element} parent
    * @returns {ElementPlacement<Text, Element>}
    */
-  getPlacement(node) {
-    assert(node.parentElement, "Node should have a parent element")
+  getPlacement(node, parent) {
+    assert(
+      node.parentElement ?? parent,
+      `Node ${node} should have a parent element`,
+    )
     return {
-      parent: node.parentElement,
+      parent: node.parentElement ?? parent,
       async next() {
         return /** @type {Text | Element | null} */ (node.nextSibling)
       },
