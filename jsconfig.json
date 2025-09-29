@@ -6,9 +6,5 @@
     "module": "NodeNext",
     "moduleResolution": "nodenext"
   },
-  "exclude": [
-    "node_modules",
-    "**/node_modules",
-    "**/dist"
-  ]
+  "exclude": ["node_modules", "**/node_modules", "**/dist"]
 }

@@ -11,24 +11,24 @@ import { generate } from "escodegen"
 export function jsxRX() {
   let shouldTransform = false
   return {
-    name: 'vite-plugin-jsxrx',
+    name: "vite-plugin-jsxrx",
     config() {
       return {
         esbuild: {
-          jsx: 'automatic',
-          jsxImportSource: '@jsxrx/core'
-        }
+          jsx: "automatic",
+          jsxImportSource: "@jsxrx/core",
+        },
       }
     },
     configResolved(config) {
-      shouldTransform = config.command === 'build'
+      shouldTransform = config.command === "build"
     },
     transform(code, id) {
       if (!shouldTransform || !/\.(jsx|tsx)$/.test(id)) {
         return null
       }
 
-      const ast = this.parse(code, { jsx: true });
+      const ast = this.parse(code, { jsx: true })
 
       const transformed = transform(ast, id)
 
@@ -36,9 +36,8 @@ export function jsxRX() {
 
       return {
         ast: this.parse(output),
-        code: output
+        code: output,
       }
-
-    }
+    },
   }
 }

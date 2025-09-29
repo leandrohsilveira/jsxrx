@@ -3,18 +3,17 @@
  * @import { IContext, IContextMap } from "./jsx"
  */
 
-import { assert } from "@jsxrx/utils";
-import { BehaviorSubject, combineLatest, map, of, switchMap } from "rxjs";
+import { assert } from "@jsxrx/utils"
+import { BehaviorSubject, combineLatest, map, of, switchMap } from "rxjs"
 
 /**
  * @template T
  * @implements {IContext<T>}
  */
 export class Context {
-
   /**
-   * @param {string} name 
-   * @param {T} initialValue 
+   * @param {string} name
+   * @param {T} initialValue
    */
   constructor(name, initialValue) {
     this.initialValue = initialValue
@@ -30,21 +29,20 @@ export class Context {
  * @implements {IContextMap}
  */
 export class ContextMap {
-
   /**
-   * @param {Observable<Record<symbol, Observable<*>>>} [upstream$=of({})] 
+   * @param {Observable<Record<symbol, Observable<*>>>} [upstream$=of({})]
    */
   constructor(upstream$ = of({})) {
     this.#upstream$ = upstream$
     this.#local$ = new BehaviorSubject({})
     this.#stream$ = combineLatest({
       upstream: upstream$,
-      local: this.#local$
+      local: this.#local$,
     }).pipe(
       map(({ upstream, local }) => ({
         ...upstream,
         ...local,
-      }))
+      })),
     )
   }
 
@@ -60,8 +58,8 @@ export class ContextMap {
 
   /**
    * @template T
-   * @param {Context<T>} context 
-   * @param {Observable<T>} value$ 
+   * @param {Context<T>} context
+   * @param {Observable<T>} value$
    */
   set(context, value$) {
     this.#local$.next({
@@ -72,27 +70,32 @@ export class ContextMap {
 
   /**
    * @template T
-   * @param {Context<T>} context 
+   * @param {Context<T>} context
    * @returns {Observable<T>}
    */
   require(context) {
     return this.#upstream$.pipe(
       switchMap(contexts => {
         const value$ = contexts[context.symbol]
-        assert(value$, `Unable to find required context for ${String(context.symbol)}`)
+        assert(
+          value$,
+          `Unable to find required context for ${String(context.symbol)}`,
+        )
         return value$
-      })
+      }),
     )
   }
 
   /**
    * @template T
-   * @param{Context<T>} context 
+   * @param{Context<T>} context
    * @returns {Observable<T>}
    */
   optional(context) {
     return this.#upstream$.pipe(
-      switchMap(contexts => contexts[context.symbol] ?? of(context.initialValue))
+      switchMap(
+        contexts => contexts[context.symbol] ?? of(context.initialValue),
+      ),
     )
   }
 }

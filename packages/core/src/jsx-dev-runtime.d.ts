@@ -1,4 +1,4 @@
-import * as JsxRx from "./jsx";
+import * as JsxRx from "./jsx"
 
 export { JSX, Fragment } from "./jsx-runtime"
 
@@ -6,17 +6,17 @@ export interface JSXSource {
   /**
    * The source file where the element originates from.
    */
-  fileName?: string | undefined;
+  fileName?: string | undefined
 
   /**
    * The line number where the element was created.
    */
-  lineNumber?: number | undefined;
+  lineNumber?: number | undefined
 
   /**
    * The column number where the element was created.
    */
-  columnNumber?: number | undefined;
+  columnNumber?: number | undefined
 }
 
 /**
@@ -31,4 +31,4 @@ export function jsxDEV(
   isStatic: boolean,
   source?: JSXSource,
   self?: unknown,
-): JsxRx.ElementNode;
+): JsxRx.ElementNode

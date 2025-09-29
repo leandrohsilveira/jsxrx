@@ -10,44 +10,44 @@ import { assert } from "@jsxrx/utils"
  */
 export class DOMRenderer {
   /**
-   * @param {string} text 
+   * @param {string} text
    */
   createTextNode(text) {
     return document.createTextNode(text)
   }
 
   /**
-   * @param {string} tag 
+   * @param {string} tag
    */
   createElement(tag) {
     return document.createElement(tag)
   }
 
   /**
-   * @param {string} text 
-   * @param {Text} node 
+   * @param {string} text
+   * @param {Text} node
    */
   setText(text, node) {
     node.textContent = text
   }
 
   /**
-   * @param {Element} element 
-   * @param {string} name 
-   * @param {unknown} value 
+   * @param {Element} element
+   * @param {string} name
+   * @param {unknown} value
    */
   setProperty(element, name, value) {
-    /** @type {*} */(element)[name] = value
+    /** @type {*} */ ;(element)[name] = value
   }
 
   /**
-   * @param {Element} element 
-   * @param {string} name 
-   * @param {() => void} listener 
+   * @param {Element} element
+   * @param {string} name
+   * @param {() => void} listener
    * @returns {() => void}
    */
   listen(element, name, listener) {
-    const eventName = name.replace(/^on/, '').toLowerCase()
+    const eventName = name.replace(/^on/, "").toLowerCase()
     element.addEventListener(eventName, listener)
     return () => {
       element.removeEventListener(eventName, listener)
@@ -55,7 +55,7 @@ export class DOMRenderer {
   }
 
   /**
-   * @param {string[]} names 
+   * @param {string[]} names
    * @returns {{ props: string[], events: string[] }}
    */
   determinePropsAndEvents(names) {
@@ -64,12 +64,15 @@ export class DOMRenderer {
         if (/^on.*/.test(name)) return { props, events: [...events, name] }
         return { props: [...props, name], events }
       },
-      { props: /** @type {string[]} */([]), events: /** @type {string[]} */([]) }
+      {
+        props: /** @type {string[]} */ ([]),
+        events: /** @type {string[]} */ ([]),
+      },
     )
   }
 
   /**
-   * @param {Text | Element} node 
+   * @param {Text | Element} node
    * @param {ElementPlacement<Text, Element>} placement
    */
   async place(node, placement) {
@@ -85,12 +88,15 @@ export class DOMRenderer {
       return next.before(node)
     }
 
-    console.debug(`Renderer.place => parent => prepentChild`, { node, target: parent })
+    console.debug(`Renderer.place => parent => prepentChild`, {
+      node,
+      target: parent,
+    })
     return parent.prepend(node)
   }
 
   /**
-   * @param {Text | Element} node 
+   * @param {Text | Element} node
    * @returns {ElementPlacement<Text, Element>}
    */
   getPlacement(node) {
@@ -98,17 +104,17 @@ export class DOMRenderer {
     return {
       parent: node.parentElement,
       async next() {
-        return /** @type {Text | Element | null} */(node.nextSibling)
+        return /** @type {Text | Element | null} */ (node.nextSibling)
       },
       async previous() {
-        return /** @type {Text | Element | null} */(node.previousSibling)
-      }
+        return /** @type {Text | Element | null} */ (node.previousSibling)
+      },
     }
   }
 
   /**
-   * @param {Text | Element} node 
-   * @param {ElementPlacement<Text, Element>} placement 
+   * @param {Text | Element} node
+   * @param {ElementPlacement<Text, Element>} placement
    */
   async move(node, placement) {
     this.remove(node, placement.parent)
@@ -117,8 +123,8 @@ export class DOMRenderer {
   }
 
   /**
-   * @param {Text | Element} node 
-   * @param {Element} parent 
+   * @param {Text | Element} node
+   * @param {Element} parent
    */
   remove(node, parent) {
     parent.removeChild(node)

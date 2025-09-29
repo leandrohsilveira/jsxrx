@@ -3,7 +3,13 @@
  * @import { IState, IStream } from "./jsx"
  */
 
-import { BehaviorSubject, Observable, shareReplay, Subscription, tap } from "rxjs";
+import {
+  BehaviorSubject,
+  Observable,
+  shareReplay,
+  Subscription,
+  tap,
+} from "rxjs"
 
 /**
  * @template T
@@ -11,7 +17,7 @@ import { BehaviorSubject, Observable, shareReplay, Subscription, tap } from "rxj
  */
 export class ActivityAwareObservable extends Observable {
   /**
-   * @param {Subject<boolean>} pending$ 
+   * @param {Subject<boolean>} pending$
    * @param {(this: Observable<T>, subscribe: Subscriber<T>) => TeardownLogic} [subscribe]
    */
   constructor(pending$, subscribe) {
@@ -20,17 +26,12 @@ export class ActivityAwareObservable extends Observable {
   }
 
   /**
-   * @param {...*} operators 
+   * @param {...*} operators
    */
   pipe(...operators) {
-    return new ActivityAwareObservable(
-      this.pending$,
-      (subscriber) => {
-        return /** @type {*} */(super.pipe)(
-          ...operators
-        ).subscribe(subscriber)
-      }
-    )
+    return new ActivityAwareObservable(this.pending$, subscriber => {
+      return /** @type {*} */ (super.pipe)(...operators).subscribe(subscriber)
+    })
   }
 }
 
@@ -40,19 +41,17 @@ export class ActivityAwareObservable extends Observable {
  * @implements {IState<T>}
  */
 export class State extends ActivityAwareObservable {
-
   /**
-   * @param {T} initial 
+   * @param {T} initial
    * @param {BehaviorSubject<boolean>} [pending$]
    */
   constructor(initial, pending$) {
-    super(
-      pending$ ?? new BehaviorSubject(false),
-      subscriber => {
-        this.#subscriptions.add(subscriber)
-        return this.#pipe$.pipe(tap(() => this.pending$.next(true))).subscribe(subscriber)
-      }
-    )
+    super(pending$ ?? new BehaviorSubject(false), subscriber => {
+      this.#subscriptions.add(subscriber)
+      return this.#pipe$
+        .pipe(tap(() => this.pending$.next(true)))
+        .subscribe(subscriber)
+    })
     this.#subscriptions = new Subscription()
     this.#value$ = new BehaviorSubject(initial)
     this.#pipe$ = this.#value$.pipe(shareReplay())
@@ -67,12 +66,11 @@ export class State extends ActivityAwareObservable {
   }
 
   /**
-   * @param {T} value 
+   * @param {T} value
    */
   set(value) {
     this.#value$.next(value)
   }
-
 }
 
 /**
@@ -80,16 +78,13 @@ export class State extends ActivityAwareObservable {
  * @implements {IStream<T>}
  */
 export class Stream {
-
   /**
-   * @param {Observable<T>} value$ 
+   * @param {Observable<T>} value$
    */
   constructor(value$) {
     this.value$ = value$
   }
 
   /** @type {'stream'} */
-  kind = 'stream'
-
+  kind = "stream"
 }
-
