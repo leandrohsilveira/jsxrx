@@ -9,6 +9,10 @@
  */
 export function shallowEqual(a, b, comparator = (a, b) => a === b) {
   if (a === b) return true
+  if (Array.isArray(a) && Array.isArray(b))
+    return a.every((item, index) => item === b[index])
+  if (Array.isArray(a) || Array.isArray(b)) return false
+  if (typeof a !== "object" || typeof b !== "object") return false
   const keysA = Object.keys(a)
   const keysB = Object.keys(b)
 

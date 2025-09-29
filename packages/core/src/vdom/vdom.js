@@ -4,7 +4,7 @@
  * @import { IVDOMChildrenBase, IVDOMNode } from "./types.js"
  */
 
-import { assert, shallowDiff } from "@jsxrx/utils"
+import { assert, shallowDiff, shallowEqual } from "@jsxrx/utils"
 import {
   BehaviorSubject,
   combineLatest,
@@ -64,8 +64,10 @@ class Input {
    */
   constructor({ context }, props, defaultProps) {
     this.context = context
+    this.#pending$ = new BehaviorSubject(true)
     this.#props$ = new BehaviorSubject(props)
     this.defaultProps = defaultProps
+    this.pending$ = this.#pending$.pipe(debounceTime(1), distinctUntilChanged())
     this.props$ = /** @type {Observable<P & IP>} */ (
       this.#props$.pipe(
         switchMap(props =>
@@ -85,6 +87,7 @@ class Input {
     this.#set(props)
   }
 
+  #pending$
   #props$
 
   /** @type {Record<string | symbol, Observable<*>>} */
@@ -128,6 +131,7 @@ class Input {
    * @param {P} values
    */
   #set(values) {
+    this.#pending$.next(true)
     for (const [key, value] of Object.entries(values)) {
       if (!this.#map[key]) {
         this.#map[key] = isObservable(value)
@@ -150,6 +154,18 @@ class Input {
         )
       }
     }
+  }
+
+  asObservable() {
+    return this.props$.pipe(
+      map(props => Object.keys(props)),
+      distinctUntilChanged(shallowEqual),
+      map(() => this),
+    )
+  }
+
+  done() {
+    this.#pending$.next(false)
   }
 }
 
@@ -482,9 +498,10 @@ export class VDOMComponentNode {
     this.props = node.props
     this.input = new Input(upstream, node.props)
     this.placement = placement
-    this.#stream$ = node.component(this.input).pipe(
+    this.#stream$ = node.component(this.input.asObservable()).pipe(
       debounceTime(1),
       map(toRenderNode),
+      tap(() => this.input.done()),
       distinctUntilChanged(compareRenderNode),
       tap(() => console.debug(`${node.name} rendered`)),
       shareReplay(),

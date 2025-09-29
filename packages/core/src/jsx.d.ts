@@ -62,6 +62,7 @@ export type Inputs<P> = {
     [K in keyof P]: P[K] extends Observable<any> ? P[K] : Observable<P[K]>
   }
   props$: Observable<P>
+  pending$: Observable<boolean>
   context: IContextMap
 }
 
@@ -78,7 +79,7 @@ export type PropsWithKeyAndChildren<T = {}> = PropsWithChildren<T> &
 
 export interface ComponentInputPipe<P, IP extends P, D>
   extends ComponentInputRender<D, IP> {
-  pipe(props: Inputs<P & IP>): D
+  pipe(props: Observable<Inputs<P & IP>>): Observable<D>
 }
 
 export interface ComponentInputRender<P, IP extends P = P> {
@@ -93,9 +94,10 @@ export interface ComponentInstance {
 }
 
 export interface Component<P> {
-  (props: Inputs<P>): Observable<ElementNode>
+  (props: Observable<Inputs<P>>): Observable<ElementNode>
   displayName?: string
   defaultProps?: *
+  placeholder?(): ElementNode
 }
 
 export interface ElementPlacement<T = unknown, E = unknown> {
