@@ -12,7 +12,7 @@ import {
   from,
   map,
   of,
-  shareReplay,
+  share,
   startWith,
   switchMap,
 } from "rxjs"
@@ -108,7 +108,7 @@ export function createHttpClient({ baseUrl, defaultHeaders = {} }) {
                   )
                 ),
             ),
-            shareReplay(),
+            share(),
           )
         },
         mutation() {

@@ -8,30 +8,15 @@ export interface Obj {}
 
 export type Fn = (...args: any) => any
 
-export interface IValue<T> extends Observable<T> {
-  pending$: Observable<boolean>
-}
-
 export interface IState<T> extends Observable<T> {
   value: T
-  pending$: Observable<boolean>
   set(value: T): void
 }
 
-export interface IStream<T> {
+export interface IDeferred<T> {
   kind: "stream"
   value$: Observable<T>
 }
-
-export interface IAsync<T> {
-  kind: "async"
-  value$: Observable<T>
-  pending$: Observable<boolean>
-}
-
-export type IDeferred<T> =
-  | { isLoading: true; value: null }
-  | { isLoading: false; value: T }
 
 export interface IContext<T> {
   create(): BehaviorSubject<T>
@@ -43,25 +28,26 @@ export interface IContextMap {
   optional(context: Context<T>): Observable<T>
 }
 
-export type Data<T> = {
-  [K in keyof T]: T[K] extends IStream<infer V>
+export type CombineOutput<T> = {
+  [K in keyof T]: T[K] extends IDeferred<infer V>
     ? Observable<V>
-    : T[K] extends IAsync<infer V>
-      ? IDeferred<V>
-      : T[K] extends Observable<infer V>
-        ? V
-        : T[K]
+    : T[K] extends Observable<infer V>
+      ? V
+      : T[K]
 }
 
-export type Props<T> = {
+export type Properties<T> = {
   [K in keyof T]: T[K] | Observable<T[K]>
 }
 
-export type Inputs<P> = {
-  props: {
-    [K in keyof P]: P[K] extends Observable<any> ? P[K] : Observable<P[K]>
-  }
+export type Props<P> = {
+  [K in keyof P]-?: P[K] extends Observable<infer V> ? V : Observable<P[K]>
+}
+
+export interface Inputs<P> extends Observable<P> {
+  props: Props<P>
   props$: Observable<P>
+  props$$: Observable<Props<P>>
   pending$: Observable<boolean>
   context: IContextMap
 }
@@ -77,24 +63,12 @@ export type PropsWithKey<T = {}> = T & {
 export type PropsWithKeyAndChildren<T = {}> = PropsWithChildren<T> &
   PropsWithKey<T>
 
-export interface ComponentInputPipe<P, IP extends P, D>
-  extends ComponentInputRender<D, IP> {
-  pipe(props: Observable<Inputs<P & IP>>): Observable<D>
-}
-
-export interface ComponentInputRender<P, IP extends P = P> {
-  name?: string
-  defaultProps?: IP
-  placeholder?(): ElementNode
-  render(data: Data<P & IP>): ElementNode
-}
-
 export interface ComponentInstance {
   context: IContextMap
 }
 
 export interface Component<P> {
-  (props: Observable<Inputs<P>>): ElementNode | Observable<ElementNode>
+  (props: Observable<P>): ElementNode | Observable<ElementNode>
   displayName?: string
   defaultProps?: *
   placeholder?(): ElementNode
@@ -2423,7 +2397,7 @@ declare namespace JsxRx {
     }
 
     type LibraryManagedAttributes<C, P> =
-      C extends Component<infer CP> ? Props<CP> : P
+      C extends Component<infer CP> ? Properties<CP> : P
 
     interface IntrinsicAttributes extends JsxRx.Attributes {}
 

@@ -2,6 +2,8 @@
  * @typedef { Record<string, unknown> } Obj
  */
 
+import { assert } from "./assert.js"
+
 /**
  * @param {*} a
  * @param {*} b
@@ -43,4 +45,15 @@ export function shallowDiff(a, b) {
  */
 export function combinedKeys(obj1, obj2) {
   return Array.from(new Set([...Object.keys(obj1), ...Object.keys(obj2)]))
+}
+
+/**
+ * @param {*} a
+ * @param {*} b
+ */
+export function strictCompareKeys(a, b) {
+  const aKeys = Object.keys(a)
+  const bKeys = Object.keys(b)
+
+  return aKeys.every((aKey, index) => aKey === bKeys[index])
 }

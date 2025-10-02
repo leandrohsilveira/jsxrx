@@ -1,10 +1,16 @@
 /**
- * @import { Observable, withLatestFrom } from "rxjs"
+ * @import { Observable, Observer } from "rxjs"
  * @import { ComponentInstance, ElementPlacement, Inputs, IRenderComponentNode, IRenderElementNode, IRenderer, IRenderFragmentNode, IRenderNode, IRenderTextNode, Obj } from "../jsx"
  * @import { IVDOMChildrenBase, IVDOMNode } from "./types.js"
  */
 
-import { assert, shallowDiff, shallowEqual, asObservable } from "@jsxrx/utils"
+import {
+  asObservable,
+  assert,
+  shallowDiff,
+  shallowEqual,
+  strictCompareKeys,
+} from "@jsxrx/utils"
 import {
   BehaviorSubject,
   combineLatest,
@@ -15,20 +21,14 @@ import {
   map,
   merge,
   of,
-  shareReplay,
+  share,
   Subscription,
   switchMap,
   tap,
 } from "rxjs"
 import { VDOMType } from "../constants/vdom"
 import { ContextMap } from "../context"
-import {
-  compareProps,
-  compareRenderNode,
-  isRenderNode,
-  toRenderNode,
-} from "./render"
-import { ActivityAwareObservable } from "../observable"
+import { compareRenderNode, isRenderNode, toRenderNode } from "./render"
 
 /**
  * @template T
@@ -57,7 +57,7 @@ export function createVDOMNode(renderer, node, placement, instance) {
  * @template {P} IP
  * @implements {Inputs<P & IP>}
  */
-class Input {
+export class Input {
   /**
    * @param {ComponentInstance} instance
    * @param {P} props
@@ -68,32 +68,23 @@ class Input {
     this.#pending$ = new BehaviorSubject(true)
     this.#props$ = new BehaviorSubject(props)
     this.defaultProps = defaultProps
-    this.pending$ = combineLatest([
-      this.#pending$,
-      ...Object.values(props).map(prop => {
-        if (prop instanceof ActivityAwareObservable) return prop.pending$
-        return of(false)
-      }),
-    ]).pipe(
-      map(pendings => pendings.some(pending => pending)),
-      debounceTime(1),
-      distinctUntilChanged(),
-    )
+    this.pending$ = this.#pending$.pipe(debounceTime(1), distinctUntilChanged())
 
     this.props$ = /** @type {Observable<P & IP>} */ (
       this.#props$.pipe(
-        switchMap(props =>
-          combineLatest(
-            Object.fromEntries(
-              Object.entries(props).map(([key, value]) => {
-                if (isObservable(value)) return [key, value]
-                return [key, of(value)]
-              }),
-            ),
-          ),
-        ),
         debounceTime(1),
-        distinctUntilChanged(compareProps),
+        distinctUntilChanged(strictCompareKeys),
+        switchMap(() => combineLatest(this.#map)),
+        debounceTime(1),
+        distinctUntilChanged(shallowEqual),
+      )
+    )
+
+    this.props$$ = /** @type {*} */ (
+      this.#props$.pipe(
+        debounceTime(1),
+        distinctUntilChanged(strictCompareKeys),
+        map(() => this.#map),
       )
     )
     this.#set(props)
@@ -132,6 +123,45 @@ class Input {
     })
   )
 
+  get source() {
+    return this.props$
+  }
+
+  get operator() {
+    return this.props$.operator
+  }
+
+  /**
+   * @param {*} operator
+   */
+  lift(operator) {
+    return this.props$.lift(operator)
+  }
+
+  toPromise() {
+    return this.props$.toPromise()
+  }
+
+  /**
+   * @param {(value: P & IP) => void} next
+   */
+  forEach(next) {
+    return this.props$.forEach(next)
+  }
+
+  // @ts-expect-error cant make this type work without workarounds
+  pipe(...operators) {
+    // @ts-expect-error cant make this type work without workarounds
+    return this.props$.pipe(...operators)
+  }
+
+  /**
+   * @param {Partial<Observer<P & IP>> | ((value: P & IP) => void) | null} [observer]
+   */
+  subscribe(observer) {
+    return this.props$.subscribe(observer ?? undefined)
+  }
+
   /**
    * @param {P} props
    */
@@ -166,14 +196,6 @@ class Input {
         )
       }
     }
-  }
-
-  asObservable() {
-    return this.props$.pipe(
-      map(props => Object.keys(props)),
-      distinctUntilChanged(shallowEqual),
-      map(() => this),
-    )
   }
 
   done() {
@@ -587,7 +609,7 @@ export class VDOMComponentNode {
           })
         }),
       ),
-      asObservable(node.component(this.input.asObservable())).pipe(
+      asObservable(node.component(this.input)).pipe(
         debounceTime(1),
         map(toRenderNode),
         tap(() => this.input.done()),
@@ -596,7 +618,7 @@ export class VDOMComponentNode {
     ).pipe(
       distinctUntilChanged(compareRenderNode),
       tap(() => console.debug(`${node.name} rendered`)),
-      shareReplay(),
+      share(),
     )
   }
 

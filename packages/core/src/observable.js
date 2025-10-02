@@ -1,13 +1,18 @@
 /**
- * @import { Subject, Subscriber, TeardownLogic } from "rxjs"
- * @import { IState, IStream } from "./jsx"
+ * @import { Operator } from "rxjs"
+ * @import { IState, IDeferred as IDeferred } from "./jsx"
  */
 
 import {
   BehaviorSubject,
+  debounceTime,
+  distinctUntilChanged,
+  filter,
+  merge,
   Observable,
+  of,
   shareReplay,
-  Subscription,
+  switchMap,
   tap,
 } from "rxjs"
 
@@ -15,51 +20,72 @@ import {
  * @template T
  * @extends {Observable<T>}
  */
-export class ActivityAwareObservable extends Observable {
+class ObservableDelegate extends Observable {
   /**
-   * @param {Subject<boolean>} pending$
-   * @param {(this: Observable<T>, subscribe: Subscriber<T>) => TeardownLogic} [subscribe]
+   * @param {Observable<T>} observable
+   * @param {Observable<unknown>} [source]
    */
-  constructor(pending$, subscribe) {
-    super(subscribe)
-    this.pending$ = pending$
+  constructor(observable, source) {
+    super()
+    this.#delegate = observable
+    this.source = source ?? observable
+    this.operator = observable.operator
+  }
+
+  #delegate
+
+  /**
+   * @param {(value: T) => void} each
+   */
+  forEach(each) {
+    return this.#delegate.forEach(each)
   }
 
   /**
-   * @param {...*} operators
+   * @template R
+   * @param {Operator<T, R>} [operator]
    */
+  lift(operator) {
+    return this.#delegate.lift(operator)
+  }
+
+  toPromise() {
+    return this.#delegate.toPromise()
+  }
+
+  // @ts-expect-error vararg
   pipe(...operators) {
-    return new ActivityAwareObservable(this.pending$, subscriber => {
-      return /** @type {*} */ (super.pipe)(...operators).subscribe(subscriber)
-    })
+    return new ObservableDelegate(
+      this.#delegate.pipe(
+        // @ts-expect-error vararg
+        ...operators,
+        shareReplay(),
+      ),
+      this.source,
+    )
+  }
+
+  // @ts-expect-error vararg
+  subscribe(...args) {
+    return this.#delegate.subscribe(...args)
   }
 }
 
 /**
  * @template T
- * @extends {ActivityAwareObservable<T>}
+ * @extends {ObservableDelegate<T>}
  * @implements {IState<T>}
  */
-export class State extends ActivityAwareObservable {
+export class State extends ObservableDelegate {
   /**
-   * @param {T} initial
-   * @param {BehaviorSubject<boolean>} [pending$]
+   * @param {BehaviorSubject<T>} value$
    */
-  constructor(initial, pending$) {
-    super(pending$ ?? new BehaviorSubject(false), subscriber => {
-      this.#subscriptions.add(subscriber)
-      return this.#pipe$
-        .pipe(tap(() => this.pending$.next(true)))
-        .subscribe(subscriber)
-    })
-    this.#subscriptions = new Subscription()
-    this.#value$ = new BehaviorSubject(initial)
-    this.#pipe$ = this.#value$.pipe(shareReplay())
+  constructor(value$) {
+    super(value$.asObservable(), value$.asObservable())
+    this.#value$ = value$
   }
 
-  #subscriptions
   #value$
-  #pipe$
 
   get value() {
     return this.#value$.value
@@ -75,9 +101,9 @@ export class State extends ActivityAwareObservable {
 
 /**
  * @template T
- * @implements {IStream<T>}
+ * @implements {IDeferred<T>}
  */
-export class Stream {
+export class Defer {
   /**
    * @param {Observable<T>} value$
    */
@@ -87,4 +113,43 @@ export class Stream {
 
   /** @type {'stream'} */
   kind = "stream"
+}
+
+/**
+ * @template T
+ * @param {unknown} value
+ * @returns {value is ObservableDelegate<T>}
+ */
+export function isObservableDelegate(value) {
+  return value instanceof ObservableDelegate || value instanceof State
+}
+
+/**
+ * @param {Observable<unknown>} value
+ *
+ */
+export function loading(value) {
+  if (isObservableDelegate(value)) {
+    const pending$ = new BehaviorSubject(true)
+    const observed = value.source.pipe(
+      debounceTime(1),
+      distinctUntilChanged(),
+      tap(() => pending$.next(true)),
+      switchMap(() => value),
+      debounceTime(1),
+      distinctUntilChanged(),
+      tap({
+        next: () => pending$.next(false),
+        error: () => pending$.next(false),
+      }),
+      shareReplay(),
+    )
+    return merge(observed, pending$).pipe(
+      filter(value => typeof value === "boolean"),
+      debounceTime(1),
+      distinctUntilChanged(),
+    )
+  }
+
+  return of(false)
 }

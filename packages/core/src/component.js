@@ -1,162 +1,76 @@
 /**
  * @import { Observable } from "rxjs"
- * @import { Component, IState, IStream, ComponentInputRender, ComponentInputPipe, Data } from "./jsx"
+ * @import { IState, IDeferred, CombineOutput, Inputs } from "./jsx"
  */
 
+import { assert, shallowEqual } from "@jsxrx/utils"
 import {
   BehaviorSubject,
   combineLatest,
   debounceTime,
   distinctUntilChanged,
   isObservable,
-  map,
   of,
-  Subject,
-  Subscription,
-  switchMap,
-  tap,
+  share,
 } from "rxjs"
-import { ActivityAwareObservable, State, Stream } from "./observable"
-import { compareProps, isRenderNode } from "./vdom"
-
-/**
- * @template P
- * @template D
- * @template {P} [IP=P]
- * @overload
- * @param {ComponentInputPipe<P, IP, D>} input
- * @returns {Component<P>}
- */
-/**
- * @template P
- * @template {P} [IP=P]
- * @overload
- * @param {ComponentInputRender<P & IP, IP>} input
- * @returns {Component<P>}
- */
-/**
- * @template P
- * @template D
- * @template {P} [IP=P]
- * @param {ComponentInputPipe<P, IP, D> | ComponentInputRender<P & IP, IP>} componentInput
- * @returns {Component<P>}
- */
-export function component(componentInput) {
-  /** @type {Component<P & IP>} */
-  const componentFn = input$ => {
-    /** @type {Observable<*>} */
-    let values$
-
-    if ("pipe" in componentInput) {
-      console.debug(`${componentInput.name}.pipe`)
-      values$ = componentInput.pipe(input$).pipe(
-        map(data => combineStreams(/** @type {*} */ (data))),
-        switchMap(
-          combined =>
-            /** @type {Observable<Data<D>>} */ (combineLatest(combined)),
-        ),
-        distinctUntilChanged(compareProps),
-      )
-    } else {
-      values$ = input$.pipe(
-        switchMap(({ props$ }) => props$),
-        debounceTime(1),
-      )
-    }
-
-    return values$.pipe(
-      tap(values => console.debug(`${componentInput.name}.render`, values)),
-      map(values => componentInput.render(/** @type {*} */ (values))),
-    )
-  }
-
-  componentFn.displayName = componentInput.name
-  componentFn.defaultProps = componentInput.defaultProps
-  componentFn.placeholder = componentInput.placeholder
-
-  return /** @type {Component<P>} */ (componentFn)
-}
+import { Defer, State } from "./observable"
+import { isRenderNode } from "./vdom"
+import { Input } from "./vdom/vdom"
 
 /**
  * @template T
  * @param {T} initialValue
- * @param {BehaviorSubject<boolean>} [pending]
  * @returns {IState<T>}
  */
-export function state(initialValue, pending) {
-  return new State(initialValue, pending)
+export function state(initialValue) {
+  return new State(new BehaviorSubject(initialValue))
 }
 
 /**
  * @template T
  * @param {Observable<T>} value
- * @returns {IStream<T>}
+ * @returns {IDeferred<T>}
  */
 export function defer(value) {
-  return new Stream(value)
-}
-
-/**
- * @param {Observable<unknown>} value
- *
- */
-export function loading(value) {
-  if (value instanceof ActivityAwareObservable)
-    return value.pending$.pipe(distinctUntilChanged(), debounceTime(1))
-  return of(false)
+  return new Defer(value)
 }
 
 /**
  * @template T
- * @param {Observable<T>} observable
- * @returns {Observable<T>}
+ * @param {T} data
+ * @returns {Observable<CombineOutput<T>>}
  */
-export function aware(observable) {
-  if (observable instanceof ActivityAwareObservable) return observable
-  return new ActivityAwareObservable(new BehaviorSubject(true), observer => {
-    const subscription = new Subscription()
-    const state = new Subject()
-    subscription.add(observable.subscribe(state))
-    subscription.add(state.subscribe(observer))
-    return subscription
-  })
+export function combine(data) {
+  return /** @type {*} */ (
+    combineLatest(
+      Object.fromEntries(
+        Object.entries(/** @type {Record<string, *>} */ (data)).map(
+          ([key, value]) => {
+            if (isRenderNode(value)) {
+              return [key, of(value)]
+            }
+            if (value instanceof Defer) {
+              return [key, of(value.value$)]
+            }
+            if (isObservable(value)) {
+              return [key, value]
+            }
+            return [key, of(value)]
+          },
+        ),
+      ),
+    ).pipe(debounceTime(1), distinctUntilChanged(shallowEqual), share())
+  )
 }
 
-export { combineLatest as combine } from "rxjs"
-
 /**
- * @param {*} data
- * @returns {Record<string, Observable<*>>}
+ * @template T
+ * @param {Observable<T>} input$
  */
-function combineStreams(data) {
-  return Object.fromEntries(
-    Object.entries(/** @type {Record<string, *>} */ (data)).map(
-      ([key, value]) => {
-        if (isRenderNode(value)) {
-          return [key, of(value)]
-        }
-        if (
-          value instanceof ActivityAwareObservable ||
-          value instanceof State
-        ) {
-          return [
-            key,
-            value.pipe(
-              tap({
-                next: () => value.pending$.next(false),
-                finalize: () => value.pending$.next(false),
-              }),
-            ),
-          ]
-        }
-        if (value instanceof Stream) {
-          return [key, of(aware(value.value$))]
-        }
-        if (isObservable(value)) {
-          return [key, aware(value)]
-        }
-        return [key, of(value)]
-      },
-    ),
+export function props(input$) {
+  assert(
+    input$ instanceof Input,
+    "The component input should be instance of Input class",
   )
+  return /** @type {Inputs<T>['props']} */ (input$.props)
 }
