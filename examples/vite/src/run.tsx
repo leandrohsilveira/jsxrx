@@ -27,6 +27,8 @@ function App() {
   )
 }
 
+App.placeholder = () => <div>Loading application...</div>
+
 function CountDisplay(
   input$: Observable<PropsWithChildren<{ count?: number }>>,
 ) {

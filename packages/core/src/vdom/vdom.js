@@ -71,6 +71,8 @@ export class Input {
     this.context = context
     this.#props$ = new BehaviorSubject(props)
     this.defaultProps = defaultProps
+    this.#loading$ = new BehaviorSubject(true)
+    this.loading$ = this.#loading$.pipe(distinctUntilChanged(), debounceTime(1))
 
     this.props$ = /** @type {Observable<P & IP>} */ (
       this.#props$.pipe(
@@ -92,6 +94,7 @@ export class Input {
     this.#set(props)
   }
 
+  #loading$
   #props$
 
   /** @type {Record<string | symbol, Observable<*>>} */
@@ -196,6 +199,10 @@ export class Input {
         )
       }
     }
+  }
+
+  done() {
+    this.#loading$.next(false)
   }
 }
 
@@ -302,7 +309,8 @@ class VDOMChildrenBase {
       }
 
       assert(vdom[id], `VDOM Element with id "${id}" not found`)
-      vdom[id].apply(node.children[id], childPlacement)
+      if (node.children[id] !== this.children[id])
+        vdom[id].apply(node.children[id], childPlacement)
     }
 
     this.children = node.children
@@ -634,15 +642,26 @@ export class VDOMComponentNode {
     this.placement = placement
     this.placeholder = node.component.placeholder
     this.suspended$ = this.instance.suspension.suspended$
-    this.#suspension = !node.component.placeholder
-      ? upstream.suspension.register(this.instance.suspension.suspended$)
-      : () => {}
+    this.#subscription = new Subscription()
+
+    this.#subscription.add(
+      this.instance.suspension.register(this.input.loading$),
+    )
+    if (!node.component.placeholder) {
+      this.#subscription.add(
+        upstream.suspension.register(this.instance.suspension.suspended$),
+      )
+    }
+
     this.#stream$ = combineLatest({
       render: asObservable(node.component(this.input)).pipe(
         debounceTime(1),
         map(node => toRenderNode(node)),
         distinctUntilChanged(compareRenderNode),
-        tap(() => console.debug(`${node.name} rendered`)),
+        tap(() => {
+          console.debug(`${node.name} rendered`)
+          this.input.done()
+        }),
         startWith(null),
       ),
       pending: this.suspended$.pipe(
@@ -656,12 +675,12 @@ export class VDOMComponentNode {
 
   /** @type {ComponentInstance} */
   instance
-  #suspension
+  #subscription
   #renderer
   #stream$
 
   /** @type {Promise<Subscription> | null} */
-  #subscription = null
+  #childSubscription = null
 
   /** @type {IVDOMNode<T, E> | null} */
   child = null
@@ -675,13 +694,13 @@ export class VDOMComponentNode {
   }
 
   async firstElement() {
-    await this.#subscription
+    await this.#childSubscription
     if (this.isPending) return (await this.pending?.firstElement()) ?? null
     return (await this.child?.firstElement()) ?? null
   }
 
   async lastElement() {
-    await this.#subscription
+    await this.#childSubscription
     if (this.isPending) return (await this.pending?.lastElement()) ?? null
     return (await this.child?.lastElement()) ?? null
   }
@@ -748,7 +767,7 @@ export class VDOMComponentNode {
           await this.pending?.remove()
           if (!this.child && !render) return
           if (this.child && (!render || render.id !== this.child.id)) {
-            const componentSub = await this.#subscription
+            const componentSub = await this.#childSubscription
             assert(
               componentSub,
               `Component child subscription not found for component ${this.name} (${this.id})`,
@@ -756,7 +775,7 @@ export class VDOMComponentNode {
             componentSub.unsubscribe()
             subscription.remove(componentSub)
             this.child = null
-            this.#subscription = null
+            this.#childSubscription = null
             this.lastRender = null
           }
           if (!this.child && render) {
@@ -766,11 +785,11 @@ export class VDOMComponentNode {
               this.placement,
               this.instance,
             )
-            this.#subscription = this.child.subscribe()
-            subscription.add(await this.#subscription)
+            this.#childSubscription = this.child.subscribe()
+            subscription.add(await this.#childSubscription)
             subscription.add(() => {
               // TODO: add unmount logic
-              this.#suspension()
+              this.#subscription.unsubscribe()
               console.debug("Component VDOM Node destroyed", this)
             })
             this.lastRender = render
@@ -1053,7 +1072,7 @@ class VDOMObservableNode {
               vdom.apply(node, this.placement)
               return rendering.resolve(vdom)
             }
-            resolve(null)
+            resolve(vdom)
           })
         }),
       ),

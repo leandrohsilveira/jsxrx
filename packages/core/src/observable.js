@@ -1,6 +1,6 @@
 /**
  * @import { Operator } from "rxjs"
- * @import { IState, IDeferred as IDeferred, CombineOutput } from "./jsx"
+ * @import { IState, IDeferred as IDeferred, CombineOutput, ILoading } from "./jsx"
  */
 
 import { shallowEqual } from "@jsxrx/utils"
@@ -15,6 +15,7 @@ import {
   Observable,
   of,
   share,
+  shareReplay,
   switchMap,
   tap,
 } from "rxjs"
@@ -157,25 +158,29 @@ export function combine(data) {
 
 /**
  * @param {Observable<unknown>} value
+ * @param {number} [debounce=10]
  * @returns {Observable<boolean>}
  */
-export function loading(value) {
+export function loading(value, debounce = 10) {
   if (isObservableDelegate(value)) {
     const pending$ = new BehaviorSubject(true)
-    const observed = value.source.pipe(
-      tap(() => pending$.next(true)),
-      switchMap(() => value),
-    )
+    const observed = value.source.pipe(tap(() => pending$.next(true)))
     return merge(
       observed,
       value.pipe(
+        debounceTime(1),
         tap({
           next: () => pending$.next(false),
           error: () => pending$.next(false),
         }),
+        filter(() => false),
       ),
-      pending$.pipe(debounceTime(1), distinctUntilChanged()),
-    ).pipe(filter(value => typeof value === "boolean"))
+      pending$,
+    ).pipe(
+      filter(value => typeof value === "boolean"),
+      debounceTime(debounce),
+      distinctUntilChanged(),
+    )
   }
 
   return of(false)
