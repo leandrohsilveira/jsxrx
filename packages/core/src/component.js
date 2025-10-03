@@ -3,18 +3,9 @@
  * @import { IState, IDeferred, CombineOutput, Inputs } from "./jsx"
  */
 
-import { assert, shallowEqual } from "@jsxrx/utils"
-import {
-  BehaviorSubject,
-  combineLatest,
-  debounceTime,
-  distinctUntilChanged,
-  isObservable,
-  of,
-  share,
-} from "rxjs"
+import { assert } from "@jsxrx/utils"
+import { BehaviorSubject } from "rxjs"
 import { Defer, State } from "./observable"
-import { isRenderNode } from "./vdom"
 import { Input } from "./vdom/vdom"
 
 /**
@@ -33,34 +24,6 @@ export function state(initialValue) {
  */
 export function defer(value) {
   return new Defer(value)
-}
-
-/**
- * @template T
- * @param {T} data
- * @returns {Observable<CombineOutput<T>>}
- */
-export function combine(data) {
-  return /** @type {*} */ (
-    combineLatest(
-      Object.fromEntries(
-        Object.entries(/** @type {Record<string, *>} */ (data)).map(
-          ([key, value]) => {
-            if (isRenderNode(value)) {
-              return [key, of(value)]
-            }
-            if (value instanceof Defer) {
-              return [key, of(value.value$)]
-            }
-            if (isObservable(value)) {
-              return [key, value]
-            }
-            return [key, of(value)]
-          },
-        ),
-      ),
-    ).pipe(debounceTime(1), distinctUntilChanged(shallowEqual), share())
-  )
 }
 
 /**

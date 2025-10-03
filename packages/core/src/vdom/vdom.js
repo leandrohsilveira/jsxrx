@@ -1,6 +1,6 @@
 /**
  * @import { Observable, Observer } from "rxjs"
- * @import { ComponentInstance, ElementPlacement, Inputs, IRenderComponentNode, IRenderElementNode, IRenderer, IRenderFragmentNode, IRenderNode, IRenderTextNode, Obj } from "../jsx"
+ * @import { ComponentInstance, ElementNode, ElementPlacement, Inputs, IRenderComponentNode, IRenderElementNode, IRenderer, IRenderFragmentNode, IRenderNode, IRenderObservableNode, IRenderTextNode, Obj, SuspensionController } from "../jsx"
  * @import { IVDOMChildrenBase, IVDOMNode } from "./types.js"
  */
 
@@ -22,12 +22,14 @@ import {
   merge,
   of,
   share,
+  startWith,
   Subscription,
   switchMap,
   tap,
 } from "rxjs"
 import { VDOMType } from "../constants/vdom"
 import { ContextMap } from "../context"
+import { isObservableDelegate, loading } from "../observable"
 import { compareRenderNode, isRenderNode, toRenderNode } from "./render"
 
 /**
@@ -49,6 +51,8 @@ export function createVDOMNode(renderer, node, placement, instance) {
       return new VDOMTextNode(renderer, node, placement)
     case VDOMType.FRAGMENT:
       return new VDOMFragmentNode(renderer, node, placement, instance)
+    case VDOMType.OBSERVABLE:
+      return new VDOMObservableNode(renderer, node, placement, instance)
   }
 }
 
@@ -65,10 +69,8 @@ export class Input {
    */
   constructor({ context }, props, defaultProps) {
     this.context = context
-    this.#pending$ = new BehaviorSubject(true)
     this.#props$ = new BehaviorSubject(props)
     this.defaultProps = defaultProps
-    this.pending$ = this.#pending$.pipe(debounceTime(1), distinctUntilChanged())
 
     this.props$ = /** @type {Observable<P & IP>} */ (
       this.#props$.pipe(
@@ -90,7 +92,6 @@ export class Input {
     this.#set(props)
   }
 
-  #pending$
   #props$
 
   /** @type {Record<string | symbol, Observable<*>>} */
@@ -173,7 +174,6 @@ export class Input {
    * @param {P} values
    */
   #set(values) {
-    this.#pending$.next(true)
     for (const [key, value] of Object.entries(values)) {
       if (!this.#map[key]) {
         this.#map[key] = isObservable(value)
@@ -196,10 +196,6 @@ export class Input {
         )
       }
     }
-  }
-
-  done() {
-    this.#pending$.next(false)
   }
 }
 
@@ -340,6 +336,7 @@ export class VDOMTextNode {
     this.text = node.text
     this.placement = placement
     this.#element = renderer.createTextNode(node.text ?? "")
+    this.suspended$ = of(false)
     this.#stream = new BehaviorSubject({ node, placement })
   }
 
@@ -423,13 +420,20 @@ export class VDOMElementNode extends VDOMChildrenBase {
    * @param {ComponentInstance} instance
    */
   constructor(renderer, node, placement, instance) {
-    super(renderer, instance)
+    super(renderer, { ...instance, suspension: createSuspensionController() })
     this.#renderer = renderer
     this.id = node.id
     this.name = node.tag
     this.placement = placement
     this.#element = renderer.createElement(node.tag)
+    this.#subscriptions = new Subscription()
     this.#stream$ = new BehaviorSubject({ node, placement })
+    this.suspended$ = this.instance.suspension.suspended$
+    this.#propsSuspension = createSuspensionController()
+    this.#subscriptions.add(
+      instance.suspension.register(this.#propsSuspension.suspended$),
+    )
+    this.#subscriptions.add(instance.suspension.register(this.suspended$))
   }
 
   /** @type {Record<string, *>} */
@@ -440,6 +444,11 @@ export class VDOMElementNode extends VDOMChildrenBase {
 
   /** @type {Record<string, () => void>} */
   #events = {}
+
+  /** @type {Record<string, Subscription>} */
+  #propsSubscribers = {}
+  #propsSuspension
+  #subscriptions
 
   /** @type {Promise<Record<string, IVDOMNode<T, E>>>} */
   #vdom = Promise.resolve({})
@@ -504,10 +513,34 @@ export class VDOMElementNode extends VDOMChildrenBase {
             const { props, events } =
               this.#renderer.determinePropsAndEvents(changedProps)
             for (const name of props) {
+              if (isObservable(node.props[name])) {
+                if (isObservableDelegate(node.props[name]))
+                  this.#propsSuspension.register(loading(node.props[name]))
+                this.#propsSubscribers[name]?.unsubscribe()
+                this.#propsSubscribers[name] = node.props[name].subscribe(
+                  value =>
+                    this.#renderer.setProperty(this.#element, name, value),
+                )
+                continue
+              }
               this.#renderer.setProperty(this.#element, name, node.props[name])
             }
             for (const name of events) {
               this.#events[name]?.()
+              if (isObservable(node.props[name])) {
+                this.#propsSubscribers[name]?.unsubscribe()
+                this.#propsSubscribers[name] = node.props[name].subscribe(
+                  value => {
+                    this.#events[name]?.()
+                    this.#events[name] = this.#renderer.listen(
+                      this.#element,
+                      name,
+                      /** @type {*} */ (value),
+                    )
+                  },
+                )
+                continue
+              }
               this.#events[name] = this.#renderer.listen(
                 this.#element,
                 name,
@@ -531,6 +564,12 @@ export class VDOMElementNode extends VDOMChildrenBase {
               this.#stream$.complete()
               await this.remove()
               Object.values(this.#events).map(unsubscribe => unsubscribe())
+              Object.values(this.#propsSubscribers).map(subscriber =>
+                subscriber.unsubscribe(),
+              )
+              this.instance.suspension.unsubscribe()
+              this.#propsSuspension.unsubscribe()
+              this.#subscriptions.unsubscribe()
               this.unsubscribeChildren()
               this.#vdom = Promise.resolve({})
               this.mounted = false
@@ -583,47 +622,41 @@ export class VDOMComponentNode {
       upstream.context instanceof ContextMap,
       "component upstream instance context property should be instance of ContextMap class",
     )
-    this.instance = { context: upstream.context.downstream() }
+    this.instance = {
+      context: upstream.context.downstream(),
+      suspension: createSuspensionController(),
+    }
     this.#renderer = renderer
     this.id = node.id
     this.name = node.name
     this.props = node.props
     this.input = new Input(upstream, node.props)
     this.placement = placement
-    this.#stream$ = merge(
-      this.input.pending$.pipe(
-        filter(pending => pending && !!node.component.placeholder),
-        map(() => {
-          assert(
-            node.component.placeholder,
-            "Node component placeholder should not be null/undefined at this point",
-          )
-          return toRenderNode(node.component.placeholder())
-        }),
+    this.placeholder = node.component.placeholder
+    this.suspended$ = this.instance.suspension.suspended$
+    this.#suspension = !node.component.placeholder
+      ? upstream.suspension.register(this.instance.suspension.suspended$)
+      : () => {}
+    this.#stream$ = combineLatest({
+      render: asObservable(node.component(this.input)).pipe(
         debounceTime(1),
-        switchMap(pending => {
-          // TODO: once ElementNode supports Observable<ElementNode>
-          return of({
-            render: null,
-            pending,
-          })
-        }),
+        map(node => toRenderNode(node)),
+        distinctUntilChanged(compareRenderNode),
+        tap(() => console.debug(`${node.name} rendered`)),
+        startWith(null),
       ),
-      asObservable(node.component(this.input)).pipe(
+      pending: this.suspended$.pipe(
         debounceTime(1),
-        map(toRenderNode),
-        tap(() => this.input.done()),
-        map(render => ({ pending: null, render })),
+        filter(() => !!node.component.placeholder),
+        startWith(false),
+        distinctUntilChanged(),
       ),
-    ).pipe(
-      distinctUntilChanged(compareRenderNode),
-      tap(() => console.debug(`${node.name} rendered`)),
-      share(),
-    )
+    }).pipe(debounceTime(1))
   }
 
   /** @type {ComponentInstance} */
   instance
+  #suspension
   #renderer
   #stream$
 
@@ -635,6 +668,7 @@ export class VDOMComponentNode {
   /** @type {IVDOMNode<T, E> | null} */
   pending = null
   isPending = false
+  lastRender = null
 
   get placed() {
     return (this.isPending ? this.pending?.placed : this.child?.placed) ?? false
@@ -681,14 +715,18 @@ export class VDOMComponentNode {
     const subscription = new Subscription()
     await new Promise(resolve =>
       subscription.add(
-        this.#stream$.subscribe(async ({ render, pending }) => {
+        this.#stream$.subscribe(async ({ pending, render }) => {
           if (pending) {
+            assert(
+              this.placeholder,
+              "component VDOM should never emit pending when placeholder is null",
+            )
             this.isPending = true
             await this.child?.remove()
             if (!this.pending) {
               this.pending = createVDOMNode(
                 this.#renderer,
-                pending,
+                toRenderNode(this.placeholder()),
                 this.placement,
                 this.instance,
               )
@@ -697,7 +735,7 @@ export class VDOMComponentNode {
               return
             }
 
-            this.pending.apply(pending, this.placement)
+            this.pending.apply(toRenderNode(this.placeholder()), this.placement)
 
             if (!this.pending.placed) {
               await this.pending.place()
@@ -705,8 +743,9 @@ export class VDOMComponentNode {
 
             return
           }
-          await this.pending?.remove()
+
           this.isPending = false
+          await this.pending?.remove()
           if (!this.child && !render) return
           if (this.child && (!render || render.id !== this.child.id)) {
             const componentSub = await this.#subscription
@@ -718,6 +757,7 @@ export class VDOMComponentNode {
             subscription.remove(componentSub)
             this.child = null
             this.#subscription = null
+            this.lastRender = null
           }
           if (!this.child && render) {
             this.child = createVDOMNode(
@@ -730,19 +770,21 @@ export class VDOMComponentNode {
             subscription.add(await this.#subscription)
             subscription.add(() => {
               // TODO: add unmount logic
+              this.#suspension()
               console.debug("Component VDOM Node destroyed", this)
             })
+            this.lastRender = render
             resolve(null)
             console.debug(
               `VDOM Component Child added: ${this.child.id} (${this.child.name})`,
             )
             return
           }
-          if (this.child && render) {
+          if (this.child && render && render !== this.lastRender) {
             this.child.apply(render, this.placement)
-
-            return await this.child.place()
+            this.lastRender = render
           }
+          return await this.place()
         }),
       ),
     )
@@ -768,6 +810,7 @@ export class VDOMFragmentNode extends VDOMChildrenBase {
     this.id = node.id
     this.placement = placement
     this.#stream$ = new BehaviorSubject({ node, placement })
+    this.suspended$ = of(false)
   }
 
   name = "Fragment"
@@ -884,6 +927,143 @@ export class VDOMFragmentNode extends VDOMChildrenBase {
 }
 
 /**
+ * @template T
+ * @template E
+ * @implements {IVDOMNode<T, E>}
+ */
+class VDOMObservableNode {
+  /**
+   * @param {IRenderer<T, E>} renderer
+   * @param {IRenderObservableNode} node
+   * @param {ElementPlacement<T, E>} placement
+   * @param {ComponentInstance} instance
+   */
+  constructor(renderer, node, placement, instance) {
+    this.#renderer = renderer
+    this.placement = placement
+    this.instance = instance
+    this.#source$ = new BehaviorSubject(
+      node.source.pipe(
+        map(node => toRenderNode(node)),
+        share(),
+      ),
+    )
+    this.id = node.id
+    this.name = "Observable"
+    this.suspended$ = loading(node.source)
+    this.#suspension = instance.suspension.register(this.suspended$)
+  }
+
+  #renderer
+  #source$
+
+  /** @type {Promise<IVDOMNode<T, E> | null>} */
+  #vdom = Promise.resolve(null)
+
+  /** @type {Subscription | null} */
+  #subscription = null
+  /** @type {Subscription | null} */
+  #sourceSubscription = null
+  #suspension
+
+  placed = false
+
+  async firstElement() {
+    const vdom = await this.#vdom
+    return (await vdom?.firstElement()) ?? null
+  }
+
+  async lastElement() {
+    const vdom = await this.#vdom
+    return (await vdom?.lastElement()) ?? null
+  }
+
+  async place() {
+    if (this.placed) return
+    const vdom = await this.#vdom
+    await vdom?.place()
+    this.placed = true
+  }
+
+  async remove() {
+    if (!this.placed) return
+    const vdom = await this.#vdom
+    await vdom?.remove()
+    this.placed = false
+  }
+
+  /**
+   * @param {IRenderObservableNode} node
+   * @param {ElementPlacement<T, E>} placement
+   */
+  apply(node, placement) {
+    this.placement = placement
+    this.#source$.next(
+      node.source.pipe(
+        map(node => toRenderNode(node)),
+        share(),
+      ),
+    )
+  }
+
+  async subscribe() {
+    const subscriptions = new Subscription()
+
+    subscriptions.add(() => {
+      this.#subscription?.unsubscribe()
+      this.#sourceSubscription?.unsubscribe()
+      this.#subscription = null
+      this.#vdom = Promise.resolve(null)
+      this.placed = false
+      this.#suspension()
+    })
+
+    await new Promise(resolve =>
+      subscriptions.add(
+        this.#source$.subscribe(source => {
+          this.#sourceSubscription?.unsubscribe()
+          this.#sourceSubscription = source.subscribe(async node => {
+            const vdom = await this.#vdom
+
+            /** @type {PromiseWithResolvers<IVDOMNode<T, E> | null>} */
+            const rendering = Promise.withResolvers()
+            this.#vdom = rendering.promise
+
+            if (node !== null && (!vdom || vdom.id !== node.id)) {
+              this.#subscription?.unsubscribe()
+              const result = createVDOMNode(
+                this.#renderer,
+                node,
+                this.placement,
+                this.instance,
+              )
+              this.#subscription = await result.subscribe()
+              resolve(result)
+              return rendering.resolve(result)
+            }
+            if (vdom && node === null) {
+              assert(
+                this.#subscription !== null,
+                "When vdom is not null, #subscription should not be null",
+              )
+              this.#subscription.unsubscribe()
+              return rendering.resolve(null)
+            }
+            if (vdom && node !== null && vdom.id === node.id) {
+              vdom.apply(node, this.placement)
+              return rendering.resolve(vdom)
+            }
+            resolve(null)
+          })
+        }),
+      ),
+    )
+
+    return subscriptions
+  }
+}
+
+/**
  * @param {Obj} nextState
  * @param {Obj} previousState
  */
@@ -946,5 +1126,32 @@ async function detectAndMove(renderer, element, placement) {
       parent: placement.parent,
       previous: placement.previous,
     })
+  }
+}
+
+/**
+ * @returns {SuspensionController}
+ */
+export function createSuspensionController() {
+  const control$ = new BehaviorSubject(
+    /** @type {Observable<boolean>[]} */ ([]),
+  )
+
+  return {
+    suspended$: control$.pipe(
+      switchMap(control =>
+        control.length ? combineLatest(control) : of([false]),
+      ),
+      map(suspensions => suspensions.some(suspended => suspended)),
+      debounceTime(1),
+      distinctUntilChanged(),
+    ),
+    register(observable) {
+      control$.next([...control$.value, observable])
+      return () => control$.next(control$.value.filter(ob => ob !== observable))
+    },
+    unsubscribe() {
+      control$.next([])
+    },
   }
 }

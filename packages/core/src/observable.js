@@ -1,20 +1,24 @@
 /**
  * @import { Operator } from "rxjs"
- * @import { IState, IDeferred as IDeferred } from "./jsx"
+ * @import { IState, IDeferred as IDeferred, CombineOutput } from "./jsx"
  */
 
+import { shallowEqual } from "@jsxrx/utils"
 import {
   BehaviorSubject,
+  combineLatest,
   debounceTime,
   distinctUntilChanged,
   filter,
+  isObservable,
   merge,
   Observable,
   of,
-  shareReplay,
+  share,
   switchMap,
   tap,
 } from "rxjs"
+import { isRenderNode } from "./vdom"
 
 /**
  * @template T
@@ -59,7 +63,6 @@ class ObservableDelegate extends Observable {
       this.#delegate.pipe(
         // @ts-expect-error vararg
         ...operators,
-        shareReplay(),
       ),
       this.source,
     )
@@ -125,30 +128,54 @@ export function isObservableDelegate(value) {
 }
 
 /**
+ * @template T
+ * @param {T} data
+ * @returns {Observable<CombineOutput<T>>}
+ */
+export function combine(data) {
+  return /** @type {*} */ (
+    combineLatest(
+      Object.fromEntries(
+        Object.entries(/** @type {Record<string, *>} */ (data)).map(
+          ([key, value]) => {
+            if (isRenderNode(value)) {
+              return [key, of(value)]
+            }
+            if (value instanceof Defer) {
+              return [key, of(value.value$)]
+            }
+            if (isObservable(value)) {
+              return [key, value]
+            }
+            return [key, of(value)]
+          },
+        ),
+      ),
+    ).pipe(debounceTime(1), distinctUntilChanged(shallowEqual), share())
+  )
+}
+
+/**
  * @param {Observable<unknown>} value
- *
+ * @returns {Observable<boolean>}
  */
 export function loading(value) {
   if (isObservableDelegate(value)) {
     const pending$ = new BehaviorSubject(true)
     const observed = value.source.pipe(
-      debounceTime(1),
-      distinctUntilChanged(),
       tap(() => pending$.next(true)),
       switchMap(() => value),
-      debounceTime(1),
-      distinctUntilChanged(),
-      tap({
-        next: () => pending$.next(false),
-        error: () => pending$.next(false),
-      }),
-      shareReplay(),
     )
-    return merge(observed, pending$).pipe(
-      filter(value => typeof value === "boolean"),
-      debounceTime(1),
-      distinctUntilChanged(),
-    )
+    return merge(
+      observed,
+      value.pipe(
+        tap({
+          next: () => pending$.next(false),
+          error: () => pending$.next(false),
+        }),
+      ),
+      pending$.pipe(debounceTime(1), distinctUntilChanged()),
+    ).pipe(filter(value => typeof value === "boolean"))
   }
 
   return of(false)

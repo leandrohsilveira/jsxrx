@@ -6,7 +6,7 @@ import { assert } from "@jsxrx/utils"
 import { ContextMap } from "./context.js"
 import { DOMRenderer } from "./dom/renderer.js"
 import { toRenderNode } from "./vdom/render.js"
-import { createVDOMNode } from "./vdom/vdom.js"
+import { createSuspensionController, createVDOMNode } from "./vdom/vdom.js"
 
 /**
  * @param {ElementNode} element
@@ -24,6 +24,6 @@ export function render(element, target) {
     new DOMRenderer(),
     node,
     { parent: target },
-    { context: new ContextMap() },
+    { context: new ContextMap(), suspension: createSuspensionController() },
   )
 }

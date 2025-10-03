@@ -1,7 +1,9 @@
 /**
- * @import { Component, IRenderComponentNode, IRenderElementNode, IRenderTextNode, Obj, IRenderNode, IRenderFragmentNode, ElementNode } from "../jsx"
+ * @import { Observable } from "rxjs"
+ * @import { Component, IRenderComponentNode, IRenderElementNode, IRenderTextNode, Obj, IRenderNode, IRenderFragmentNode, ElementNode, IRenderObservableNode } from "../jsx"
  */
 
+import { isObservable } from "rxjs"
 import { asArray, shallowEqual } from "@jsxrx/utils"
 import { VDOMType } from "../constants/vdom.js"
 
@@ -78,7 +80,8 @@ export function isRenderNode(value) {
     value instanceof RenderTextNode ||
     value instanceof RenderElementNode ||
     value instanceof RenderComponentNode ||
-    value instanceof RenderFragmentNode
+    value instanceof RenderFragmentNode ||
+    value instanceof RenderObservableNode
   )
 }
 
@@ -101,6 +104,8 @@ export function isRenderNode(value) {
  */
 export function toRenderNode(value, index = 0) {
   if (value === null) return null
+  if (isObservable(value))
+    return new RenderObservableNode(`observable:${index}`, value, null)
   if (Array.isArray(value))
     return new RenderFragmentNode(
       `fragment:${index}`,
@@ -247,6 +252,35 @@ export class RenderFragmentNode {
     if (node.id !== this.id) return false
     if (node.type !== VDOMType.FRAGMENT) return false
     return shallowEqual(node.children, this.children, compareRenderNode)
+  }
+}
+
+/**
+ * @class
+ * @implements {IRenderObservableNode}
+ */
+export class RenderObservableNode {
+  /**
+   * @param {string} id
+   * @param {Observable<ElementNode>} source
+   * @param {*} key
+   */
+  constructor(id, source, key) {
+    this.id = id
+    this.key = key
+    this.source = source
+  }
+
+  type = VDOMType.OBSERVABLE
+
+  /**
+   * @param {IRenderNode} node
+   */
+  compareTo(node) {
+    if (node === null || node === undefined) return false
+    if (node.id !== this.id) return false
+    if (node.type !== VDOMType.OBSERVABLE) return false
+    return this.source === node.source
   }
 }
 

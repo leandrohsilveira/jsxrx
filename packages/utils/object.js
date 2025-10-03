@@ -2,8 +2,6 @@
  * @typedef { Record<string, unknown> } Obj
  */
 
-import { assert } from "./assert.js"
-
 /**
  * @param {*} a
  * @param {*} b

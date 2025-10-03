@@ -22,6 +22,16 @@ export interface IContext<T> {
   create(): BehaviorSubject<T>
 }
 
+export type ILoading<T> =
+  | { isLoading: true; value: null }
+  | { isLoading: false; value: T }
+
+export type SuspensionController = {
+  suspended$: Observable<boolean>
+  register(suspended$: Observable<boolean>): () => void
+  unsubscribe(): void
+}
+
 export interface IContextMap {
   set<T>(context: IContext<T>, value$: Observable<T>): void
   require<T>(context: Context<T>): Observable<T>
@@ -48,7 +58,6 @@ export interface Inputs<P> extends Observable<P> {
   props: Props<P>
   props$: Observable<P>
   props$$: Observable<Props<P>>
-  pending$: Observable<boolean>
   context: IContextMap
 }
 
@@ -65,10 +74,11 @@ export type PropsWithKeyAndChildren<T = {}> = PropsWithChildren<T> &
 
 export interface ComponentInstance {
   context: IContextMap
+  suspension: SuspensionController
 }
 
 export interface Component<P> {
-  (props: Observable<P>): ElementNode | Observable<ElementNode>
+  (props: Observable<P>): ElementNode
   displayName?: string
   defaultProps?: *
   placeholder?(): ElementNode
@@ -90,6 +100,7 @@ export type IRenderNode =
   | IRenderTextNode
   | IRenderComponentNode
   | IRenderFragmentNode
+  | IRenderObservableNode
 
 export interface IRenderElementNode extends RenderBase {
   type: (typeof VDOMType)["ELEMENT"]
@@ -113,6 +124,11 @@ export interface IRenderComponentNode extends RenderBase {
 export interface IRenderFragmentNode extends RenderBase {
   type: (typeof VDOMType)["FRAGMENT"]
   children: Record<string, IRenderNode>
+}
+
+export interface IRenderObservableNode extends RenderBase {
+  type: (typeof VDOMType)["OBSERVABLE"]
+  source: Observable<ElementNode>
 }
 
 export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
@@ -141,6 +157,7 @@ export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
 }
 
 export type ElementNode =
+  | Observable<ElementNode>
   | IRenderNode
   | string
   | number
@@ -511,7 +528,7 @@ declare namespace JsxRx {
   interface HTMLProps<T> extends AllHTMLAttributes<T>, ClassAttributes<T> {}
 
   type DetailedHTMLProps<E extends HTMLAttributes<T>, T> = ClassAttributes<T> &
-    E
+    Properties<E>
 
   interface SVGProps<T> extends SVGAttributes<T>, ClassAttributes<T> {}
 

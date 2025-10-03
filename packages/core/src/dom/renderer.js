@@ -83,11 +83,6 @@ export class DOMRenderer {
       console.debug(`Renderer.place => afterTarget`, { node, target: previous })
       return previous.after(node)
     }
-    const next = await placement.next?.()
-    if (next) {
-      console.debug(`Renderer.place => beforeTarget`, { node, target: next })
-      return next.before(node)
-    }
 
     console.debug(`Renderer.place => parent => prepentChild`, {
       node,

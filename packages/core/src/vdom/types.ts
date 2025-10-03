@@ -1,4 +1,4 @@
-import { Subscription } from "rxjs"
+import { Observable, Subscription } from "rxjs"
 import {
   ElementPlacement,
   IRenderElementNode,
@@ -12,6 +12,7 @@ export interface IVDOMNode<T, E> {
   id: string
   name: string
   placed: boolean
+  suspended$: Observable<boolean>
   remove(): Promise<void>
   place(): Promise<void>
   firstElement(): Promise<T | E | null>
