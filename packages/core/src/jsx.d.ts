@@ -86,8 +86,8 @@ export interface Component<P> {
 
 export interface ElementPlacement<T = unknown, E = unknown> {
   parent: E
-  previous?(): Promise<T | E | null>
-  next?(): Promise<T | E | null>
+  previous?(): T | E | null
+  next?(): T | E | null
 }
 
 interface RenderBase {
@@ -97,21 +97,14 @@ interface RenderBase {
 
 export type IRenderNode =
   | IRenderElementNode
-  | IRenderTextNode
   | IRenderComponentNode
   | IRenderFragmentNode
-  | IRenderObservableNode
 
 export interface IRenderElementNode extends RenderBase {
   type: (typeof VDOMType)["ELEMENT"]
   tag: string
   props: Record<string, any>
-  children: Record<string, IRenderNode>
-}
-
-export interface IRenderTextNode extends RenderBase {
-  type: (typeof VDOMType)["TEXT"]
-  text: string | null
+  children: ElementNode
 }
 
 export interface IRenderComponentNode extends RenderBase {
@@ -123,12 +116,7 @@ export interface IRenderComponentNode extends RenderBase {
 
 export interface IRenderFragmentNode extends RenderBase {
   type: (typeof VDOMType)["FRAGMENT"]
-  children: Record<string, IRenderNode>
-}
-
-export interface IRenderObservableNode extends RenderBase {
-  type: (typeof VDOMType)["OBSERVABLE"]
-  source: Observable<ElementNode>
+  children: ElementNode
 }
 
 export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
@@ -144,11 +132,11 @@ export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
   place(
     node: TextNode | ElementNode,
     placement: ElementPlacement<TextNode, ElementNode>,
-  ): Promise<void>
+  ): void
   move(
     node: TextNode | ElementNode,
     placement: ElementPlacement<TextNode, ElementNode>,
-  ): Promise<void>
+  ): void
   remove(node: TextNode | ElementNode, target: ElementNode): void
   getPlacement(
     node: TextNode | ElementNode,

@@ -13,12 +13,12 @@ export interface IVDOMNode<T, E> {
   name: string
   placed: boolean
   suspended$: Observable<boolean>
-  remove(): Promise<void>
-  place(): Promise<void>
-  firstElement(): Promise<T | E | null>
-  lastElement(): Promise<T | E | null>
+  remove(): void
+  place(): void
+  firstElement(): T | E | null
+  lastElement(): T | E | null
   apply(node: IRenderNode, placement: ElementPlacement<T, E>): void
-  subscribe(notify?: Notify<T, E>): Promise<Subscription>
+  subscribe(notify?: Notify<T, E>): Subscription
 }
 
 export interface IVDOMChildrenBase<
@@ -35,5 +35,5 @@ export interface IVDOMChildrenBase<
     vdom: Record<string, IVDOMNode<T, E>>,
     node: N,
     placement: ElementPlacement<T, E>,
-  ): Promise<string[]>
+  ): string[]
 }

@@ -158,10 +158,10 @@ export function combine(data) {
 
 /**
  * @param {Observable<unknown>} value
- * @param {number} [debounce=10]
+ * @param {number} [debounce=5]
  * @returns {Observable<boolean>}
  */
-export function loading(value, debounce = 10) {
+export function loading(value, debounce = 5) {
   if (isObservableDelegate(value)) {
     const pending$ = new BehaviorSubject(true)
     const observed = value.source.pipe(tap(() => pending$.next(true)))

@@ -1,26 +1,31 @@
 import { loading, props, PropsWithChildren, render, state } from "@jsxrx/core"
-import { delay, Observable, shareReplay } from "rxjs"
+import { delay, map, Observable, shareReplay } from "rxjs"
 
 function App() {
-  const count = state(0)
+  const count$ = state(0)
 
-  const delayedCount = count.pipe(delay(1000), shareReplay())
-  const countLoading = loading(delayedCount)
+  const delayedCount$ = count$.pipe(delay(1000), shareReplay())
+  const countLoading$ = loading(delayedCount$)
 
   function increase() {
-    count.set(count.value + 1)
+    count$.set(count$.value + 1)
   }
 
   function decrease() {
-    count.set(count.value - 1)
+    count$.set(count$.value - 1)
   }
 
   return (
-    <CountDisplay count={delayedCount}>
-      <button type="button" disabled={countLoading} onClick={increase}>
+    <CountDisplay count={count$}>
+      {delayedCount$.pipe(
+        map(count =>
+          count % 2 === 0 ? <div>Count is even</div> : <div>Count is odd</div>,
+        ),
+      )}
+      <button type="button" disabled={countLoading$} onClick={increase}>
         Increase
       </button>
-      <button type="button" disabled={countLoading} onClick={decrease}>
+      <button type="button" disabled={countLoading$} onClick={decrease}>
         Decrease
       </button>
     </CountDisplay>
@@ -45,8 +50,4 @@ CountDisplay.placeholder = () => <div>Loading count...</div>
 
 const root = document.querySelector("[root]")
 
-const vdom = render(<App />, root)
-
-await vdom.subscribe()
-
-console.log("VDOM Ready", vdom)
+render(<App />, root).subscribe()

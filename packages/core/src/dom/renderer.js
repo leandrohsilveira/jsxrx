@@ -76,18 +76,12 @@ export class DOMRenderer {
    * @param {Text | Element} node
    * @param {ElementPlacement<Text, Element>} placement
    */
-  async place(node, placement) {
+  place(node, placement) {
     const parent = placement.parent
-    const previous = await placement.previous?.()
+    const previous = placement.previous?.()
     if (previous) {
-      console.debug(`Renderer.place => afterTarget`, { node, target: previous })
       return previous.after(node)
     }
-
-    console.debug(`Renderer.place => parent => prepentChild`, {
-      node,
-      target: parent,
-    })
     return parent.prepend(node)
   }
 
@@ -103,10 +97,10 @@ export class DOMRenderer {
     )
     return {
       parent: node.parentElement ?? parent,
-      async next() {
+      next() {
         return /** @type {Text | Element | null} */ (node.nextSibling)
       },
-      async previous() {
+      previous() {
         return /** @type {Text | Element | null} */ (node.previousSibling)
       },
     }
@@ -116,10 +110,9 @@ export class DOMRenderer {
    * @param {Text | Element} node
    * @param {ElementPlacement<Text, Element>} placement
    */
-  async move(node, placement) {
+  move(node, placement) {
     this.remove(node, placement.parent)
-    await this.place(node, placement)
-    console.debug(`Renderer.move => elementMoved`, { node, placement })
+    this.place(node, placement)
   }
 
   /**
@@ -127,6 +120,6 @@ export class DOMRenderer {
    * @param {Element} parent
    */
   remove(node, parent) {
-    parent.removeChild(node)
+    if (node.parentNode === parent) parent.removeChild(node)
   }
 }
