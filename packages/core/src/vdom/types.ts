@@ -1,39 +1,42 @@
 import { Observable, Subscription } from "rxjs"
-import {
-  ElementPlacement,
-  IRenderElementNode,
-  IRenderFragmentNode,
-  IRenderNode,
-} from "../jsx"
+import { ElementNode, ElementPosition, IRenderComponentNode } from "../jsx"
+import { IVRenderEventType } from "../constants/types"
 
-export type Notify<T, E> = (vdom: IVDOMNode<T, E>) => void
-
-export interface IVDOMNode<T, E> {
-  id: string
-  name: string
-  placed: boolean
-  suspended$: Observable<boolean>
-  remove(): Promise<void>
-  place(): Promise<void>
-  firstElement(): Promise<T | E | null>
-  lastElement(): Promise<T | E | null>
-  apply(node: IRenderNode, placement: ElementPlacement<T, E>): void
-  subscribe(notify?: Notify<T, E>): Promise<Subscription>
+export interface VNode<T, E, N extends ElementNode = ElementNode> {
+  key: string | number | null
+  firstElement: T | E | null
+  lastElement: T | E | null
+  mount(): Subscription
+  update(next: N): void
+  placeIn(position: ElementPosition<T, E>): void
+  remove(): void
 }
 
-export interface IVDOMChildrenBase<
-  N extends IRenderFragmentNode | IRenderElementNode,
-  T,
-  E,
-> {
-  createChildPlacement(
-    vdom: Record<string, IVDOMNode<T, E>>,
-    simblings: { previous: string | null; next: string | null },
-    parentPlacement: ElementPlacement<T, E>,
-  ): ElementPlacement<T, E>
-  handleChildren(
-    vdom: Record<string, IVDOMNode<T, E>>,
-    node: N,
-    placement: ElementPlacement<T, E>,
-  ): Promise<string[]>
+export interface VNodeWithChildren<T, E, N extends ElementNode = ElementNode>
+  extends VNode<T, E, N> {
+  children: VChildren<T, E> | null
+}
+
+export interface VChildren<T, E> extends VNode<T, E> {
+  nodes: Record<string, VNode<T, E>>
+}
+
+export interface VNodeObservable<T, E>
+  extends VNode<T, E, Observable<ElementNode>> {
+  latest: VNode<T, E> | null
+}
+
+export interface VNodeComponent<T, E>
+  extends VNode<T, E, IRenderComponentNode> {
+  content: VNode<T, E> | null
+}
+
+export interface VRoot {
+  mount(element: ElementNode): Subscription
+}
+
+export interface VRenderEvent<T, E> {
+  event: IVRenderEventType
+  payload: T | E
+  position: ElementPosition<T, E>
 }

@@ -1,5 +1,6 @@
-import { _fragment, _jsx } from "./vdom/render.js"
+import { _fragment, _jsx, _suspense } from "./vdom/render.js"
 import { Fragment } from "./fragment.js"
+import { Suspense } from "./suspense.js"
 
 /**
  * @param {string} id
@@ -18,6 +19,8 @@ export function jsx(id, input, { children, ...props } = {}, key) {
  * @param {*} key
  */
 export function jsxs(id, input, { children, ...props } = {}, key) {
+  if (input === Suspense)
+    return _suspense(`suspense:${id}`, props, children, key)
   if (input === Fragment) return _fragment(`fragment:${id}`, children, key)
   return _jsx(id, input, props, children, key)
 }

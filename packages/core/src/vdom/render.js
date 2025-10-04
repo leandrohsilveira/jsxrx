@@ -1,9 +1,8 @@
 /**
  * @import { Observable } from "rxjs"
- * @import { Component, IRenderComponentNode, IRenderElementNode, IRenderTextNode, Obj, IRenderNode, IRenderFragmentNode, ElementNode, IRenderObservableNode } from "../jsx"
+ * @import { Component, IRenderComponentNode, IRenderElementNode, IRenderTextNode, Obj, IRenderNode, IRenderFragmentNode, ElementNode, IRenderObservableNode, IRenderSuspenseNode } from "../jsx"
  */
 
-import { isObservable } from "rxjs"
 import { asArray, shallowEqual } from "@jsxrx/utils"
 import { VDOMType } from "../constants/vdom.js"
 
@@ -29,18 +28,12 @@ import { VDOMType } from "../constants/vdom.js"
  * @param {string} id
  * @param {T | Component<P>} input
  * @param {*} props
- * @param {ElementNode | null | undefined} children
+ * @param {ElementNode} children
  * @param {*} key
  */
 export function _jsx(id, input, props, children, key) {
   if (typeof input === "string")
-    return new RenderElementNode(
-      genId(id, key),
-      input,
-      props,
-      (asArray(children) ?? []).map(toRenderNode),
-      key,
-    )
+    return new RenderElementNode(genId(id, key), input, props, children, key)
   return new RenderComponentNode(
     genId(id, key),
     input,
@@ -64,11 +57,17 @@ function genId(id, key) {
  * @param {*} key
  */
 export function _fragment(id, children, key) {
-  return new RenderFragmentNode(
-    id,
-    (asArray(children) ?? []).map(toRenderNode),
-    key,
-  )
+  return new RenderFragmentNode(id, asArray(children) ?? [], key)
+}
+
+/**
+ * @param {string} id
+ * @param {{ fallback: ElementNode }} props
+ * @param {ElementNode} children
+ * @param {*} key
+ */
+export function _suspense(id, { fallback }, children, key) {
+  return new RenderSuspenseNode(id, fallback, children, key)
 }
 
 /**
@@ -77,82 +76,11 @@ export function _fragment(id, children, key) {
  */
 export function isRenderNode(value) {
   return (
-    value instanceof RenderTextNode ||
     value instanceof RenderElementNode ||
     value instanceof RenderComponentNode ||
     value instanceof RenderFragmentNode ||
-    value instanceof RenderObservableNode
+    value instanceof RenderSuspenseNode
   )
-}
-
-/**
- * @overload
- * @param {ElementNode} value
- * @param {number | string} [index=0]
- * @returns {IRenderNode}
- */
-/**
- * @overload
- * @param {ElementNode | null} value
- * @param {number | string} [index=0]
- * @returns {IRenderNode | null}
- */
-/**
- * @param {ElementNode | null} value
- * @param {number | string} [index=0]
- * @returns {IRenderNode | null}
- */
-export function toRenderNode(value, index = 0) {
-  if (value === null) return null
-  if (isObservable(value))
-    return new RenderObservableNode(`observable:${index}`, value, null)
-  if (Array.isArray(value))
-    return new RenderFragmentNode(
-      `fragment:${index}`,
-      value.map(toRenderNode),
-      index,
-    )
-  return isRenderNode(value) ? value : RenderTextNode.of(value, index)
-}
-
-/**
- * @class
- * @implements {IRenderTextNode}
- */
-export class RenderTextNode {
-  /**
-   * @constructor
-   * @param {string} id
-   * @param {string | null} text
-   */
-  constructor(id, text) {
-    this.id = id
-    this.text = text
-  }
-
-  type = VDOMType.TEXT
-
-  /**
-   * @param {IRenderNode} node
-   */
-  compareTo(node) {
-    if (node === null || node === undefined) return false
-    if (node.id !== this.id) return false
-    if (node.type !== VDOMType.TEXT) return false
-    return node.text === this.text
-  }
-
-  /**
-   * @static
-   * @param {string | number | bigint | boolean | undefined | null} value
-   * @param {number | string} [index=0]
-   */
-  static of(value, index = 0) {
-    return new RenderTextNode(
-      `text:${index}`,
-      value !== null && value !== undefined ? String(value) : null,
-    )
-  }
 }
 
 /**
@@ -165,7 +93,7 @@ export class RenderElementNode {
    * @param {string} id
    * @param {string} tag
    * @param {Record<string, *>} props
-   * @param {(IRenderNode | null)[]} children
+   * @param {ElementNode} children
    * @param {*} key
    */
   constructor(id, tag, props, children, key) {
@@ -173,9 +101,7 @@ export class RenderElementNode {
     this.tag = tag
     this.key = key
     this.props = props ?? {}
-    this.children = Object.fromEntries(
-      children.filter(child => child !== null).map(child => [child.id, child]),
-    )
+    this.children = asArray(children) ?? []
   }
 
   type = VDOMType.ELEMENT
@@ -231,15 +157,13 @@ export class RenderComponentNode {
 export class RenderFragmentNode {
   /**
    * @param {string} id
-   * @param {(IRenderNode | null)[]} children
+   * @param {ElementNode} children
    * @param {*} key
    */
   constructor(id, children, key) {
     this.id = id
     this.key = key
-    this.children = Object.fromEntries(
-      children.filter(child => child !== null).map(child => [child.id, child]),
-    )
+    this.children = asArray(children) ?? []
   }
 
   type = VDOMType.FRAGMENT
@@ -257,21 +181,23 @@ export class RenderFragmentNode {
 
 /**
  * @class
- * @implements {IRenderObservableNode}
+ * @implements {IRenderSuspenseNode}
  */
-export class RenderObservableNode {
+export class RenderSuspenseNode {
   /**
    * @param {string} id
-   * @param {Observable<ElementNode>} source
+   * @param {ElementNode} fallback
+   * @param {ElementNode} children
    * @param {*} key
    */
-  constructor(id, source, key) {
+  constructor(id, fallback, children, key) {
     this.id = id
+    this.fallback = fallback
+    this.children = children
     this.key = key
-    this.source = source
   }
 
-  type = VDOMType.OBSERVABLE
+  type = VDOMType.SUSPENSE
 
   /**
    * @param {IRenderNode} node
@@ -279,14 +205,17 @@ export class RenderObservableNode {
   compareTo(node) {
     if (node === null || node === undefined) return false
     if (node.id !== this.id) return false
-    if (node.type !== VDOMType.OBSERVABLE) return false
-    return this.source === node.source
+    if (node.type !== VDOMType.SUSPENSE) return false
+    if (!shallowEqual(node.fallback, this.fallback, compareRenderNode))
+      return false
+    return shallowEqual(node.children, this.children, compareRenderNode)
   }
 }
 
 /**
- * @param {Obj} a
- * @param {Obj} b
+ * @template {Obj} [T=Obj]
+ * @param {T} a
+ * @param {T} b
  */
 export function compareProps(a, b) {
   return shallowEqual(a, b, (a, b) => {

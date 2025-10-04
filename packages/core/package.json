@@ -20,6 +20,10 @@
       "types": "./src/index.d.ts",
       "default": "./src/index.js"
     },
+    "./dom": {
+      "types": "./src/dom/index.d.ts",
+      "default": "./src/dom/index.js"
+    },
     "./jsx-runtime": {
       "import": "./src/jsx-runtime.js",
       "types": "./src/jsx-runtime.d.ts"

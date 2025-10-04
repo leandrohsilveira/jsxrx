@@ -1,8 +1,6 @@
 /**
- * @import { IRenderer, ElementPlacement } from "../jsx.js"
+ * @import { IRenderer, ElementPosition } from "../jsx.js"
  */
-
-import { assert } from "@jsxrx/utils"
 
 /**
  * @class
@@ -74,52 +72,21 @@ export class DOMRenderer {
 
   /**
    * @param {Text | Element} node
-   * @param {ElementPlacement<Text, Element>} placement
+   * @param {ElementPosition<Text, Element>} position
    */
-  async place(node, placement) {
-    const parent = placement.parent
-    const previous = await placement.previous?.()
+  place(node, position) {
+    let previous = position.lastElement
+    while (
+      (previous === undefined || previous.parentElement !== position.parent) &&
+      position.previous
+    ) {
+      position = position.previous
+      previous = position.lastElement
+    }
     if (previous) {
-      console.debug(`Renderer.place => afterTarget`, { node, target: previous })
       return previous.after(node)
     }
-
-    console.debug(`Renderer.place => parent => prepentChild`, {
-      node,
-      target: parent,
-    })
-    return parent.prepend(node)
-  }
-
-  /**
-   * @param {Text | Element} node
-   * @param {Element} parent
-   * @returns {ElementPlacement<Text, Element>}
-   */
-  getPlacement(node, parent) {
-    assert(
-      node.parentElement ?? parent,
-      `Node ${node} should have a parent element`,
-    )
-    return {
-      parent: node.parentElement ?? parent,
-      async next() {
-        return /** @type {Text | Element | null} */ (node.nextSibling)
-      },
-      async previous() {
-        return /** @type {Text | Element | null} */ (node.previousSibling)
-      },
-    }
-  }
-
-  /**
-   * @param {Text | Element} node
-   * @param {ElementPlacement<Text, Element>} placement
-   */
-  async move(node, placement) {
-    this.remove(node, placement.parent)
-    await this.place(node, placement)
-    console.debug(`Renderer.move => elementMoved`, { node, placement })
+    return position.parent.prepend(node)
   }
 
   /**
@@ -127,6 +94,6 @@ export class DOMRenderer {
    * @param {Element} parent
    */
   remove(node, parent) {
-    parent.removeChild(node)
+    if (node.parentNode === parent) parent.removeChild(node)
   }
 }

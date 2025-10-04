@@ -1,1176 +1,1086 @@
 /**
- * @import { Observable, Observer } from "rxjs"
- * @import { ComponentInstance, ElementNode, ElementPlacement, Inputs, IRenderComponentNode, IRenderElementNode, IRenderer, IRenderFragmentNode, IRenderNode, IRenderObservableNode, IRenderTextNode, Obj, SuspensionController } from "../jsx"
- * @import { IVDOMChildrenBase, IVDOMNode } from "./types.js"
+ * @import { Observable } from "rxjs"
+ * @import { ComponentInstance, ElementNode, ElementPosition, IRenderComponentNode, IRenderElementNode, IRenderer, IRenderFragmentNode, IRenderSuspenseNode, IRenderText, SuspensionContext, SuspensionController } from "../jsx.js"
+ * @import { VChildren, VNode, VNodeComponent, VNodeObservable, VNodeWithChildren, VRenderEvent, VRoot } from "./types.js"
  */
 
-import {
-  asObservable,
-  assert,
-  shallowDiff,
-  shallowEqual,
-  strictCompareKeys,
-} from "@jsxrx/utils"
+import { asArray, assert, shallowDiff } from "@jsxrx/utils"
 import {
   BehaviorSubject,
-  combineLatest,
+  bufferTime,
   debounceTime,
   distinctUntilChanged,
   filter,
   isObservable,
   map,
-  merge,
-  of,
-  share,
-  startWith,
+  shareReplay,
+  Subject,
   Subscription,
   switchMap,
-  tap,
+  take,
 } from "rxjs"
-import { VDOMType } from "../constants/vdom"
-import { ContextMap } from "../context"
-import { isObservableDelegate, loading } from "../observable"
-import { compareRenderNode, isRenderNode, toRenderNode } from "./render"
+import { VDOMType } from "../constants/vdom.js"
+import { ContextMap } from "../context.js"
+import {
+  ElementRef,
+  Input,
+  isObservableDelegate,
+  pending,
+} from "../observable.js"
+import { isRenderNode } from "./render.js"
+import { BatchRenderer } from "./batch-renderer.js"
+import { VRenderEventType } from "../constants/render.js"
 
 /**
  * @template T
  * @template E
  * @param {IRenderer<T, E>} renderer
- * @param {IRenderNode} node
- * @param {ElementPlacement} placement
- * @param {ComponentInstance} instance
- * @returns {IVDOMNode<T, E>}
+ * @param {E | null | undefined} element
+ * @returns {VRoot}
  */
-export function createVDOMNode(renderer, node, placement, instance) {
-  switch (node.type) {
-    case VDOMType.COMPONENT:
-      return new VDOMComponentNode(renderer, node, placement, instance)
-    case VDOMType.ELEMENT:
-      return new VDOMElementNode(renderer, node, placement, instance)
-    case VDOMType.TEXT:
-      return new VDOMTextNode(renderer, node, placement)
-    case VDOMType.FRAGMENT:
-      return new VDOMFragmentNode(renderer, node, placement, instance)
-    case VDOMType.OBSERVABLE:
-      return new VDOMObservableNode(renderer, node, placement, instance)
-  }
-}
+export function createRoot(renderer, element) {
+  assert(element, "Root element must not be null")
 
-/**
- * @template {Obj} P
- * @template {P} IP
- * @implements {Inputs<P & IP>}
- */
-export class Input {
-  /**
-   * @param {ComponentInstance} instance
-   * @param {P} props
-   * @param {IP} [defaultProps]
-   */
-  constructor({ context }, props, defaultProps) {
-    this.context = context
-    this.#props$ = new BehaviorSubject(props)
-    this.defaultProps = defaultProps
-    this.#loading$ = new BehaviorSubject(true)
-    this.loading$ = this.#loading$.pipe(distinctUntilChanged(), debounceTime(1))
+  /** @type {Subject<VRenderEvent<T, E>>} */
+  const publisher$ = new Subject()
 
-    this.props$ = /** @type {Observable<P & IP>} */ (
-      this.#props$.pipe(
-        debounceTime(1),
-        distinctUntilChanged(strictCompareKeys),
-        switchMap(() => combineLatest(this.#map)),
-        debounceTime(1),
-        distinctUntilChanged(shallowEqual),
-      )
-    )
-
-    this.props$$ = /** @type {*} */ (
-      this.#props$.pipe(
-        debounceTime(1),
-        distinctUntilChanged(strictCompareKeys),
-        map(() => this.#map),
-      )
-    )
-    this.#set(props)
-  }
-
-  #loading$
-  #props$
-
-  /** @type {Record<string | symbol, Observable<*>>} */
-  #map = {}
-
-  props = /** @type {Inputs<P & IP>['props']} */ (
-    new Proxy(this.#map, {
-      get: (target, prop) => {
-        if (prop in target) {
-          return target[prop].pipe(
-            source$ =>
-              merge(
-                source$.pipe(
-                  filter(value => isObservable(value)),
-                  switchMap(value => value),
-                ),
-                source$.pipe(filter(value => !isObservable(value))),
-              ),
-            distinctUntilChanged((a, b) => {
-              if (isRenderNode(a) && isRenderNode(b))
-                return compareRenderNode(a, b)
-              return a === b
-            }),
-            debounceTime(1),
-          )
-        }
-        return of(/** @type {*} */ (this.defaultProps)?.[prop])
-      },
-      ownKeys: target => Object.keys(target),
-    })
-  )
-
-  get source() {
-    return this.props$
-  }
-
-  get operator() {
-    return this.props$.operator
-  }
-
-  /**
-   * @param {*} operator
-   */
-  lift(operator) {
-    return this.props$.lift(operator)
-  }
-
-  toPromise() {
-    return this.props$.toPromise()
-  }
-
-  /**
-   * @param {(value: P & IP) => void} next
-   */
-  forEach(next) {
-    return this.props$.forEach(next)
-  }
-
-  // @ts-expect-error cant make this type work without workarounds
-  pipe(...operators) {
-    // @ts-expect-error cant make this type work without workarounds
-    return this.props$.pipe(...operators)
-  }
-
-  /**
-   * @param {Partial<Observer<P & IP>> | ((value: P & IP) => void) | null} [observer]
-   */
-  subscribe(observer) {
-    return this.props$.subscribe(observer ?? undefined)
-  }
-
-  /**
-   * @param {P} props
-   */
-  apply(props) {
-    this.#props$.next(props)
-  }
-
-  /**
-   * @param {P} values
-   */
-  #set(values) {
-    for (const [key, value] of Object.entries(values)) {
-      if (!this.#map[key]) {
-        this.#map[key] = isObservable(value)
-          ? value
-          : new BehaviorSubject(value)
-        continue
-      }
-      if (this.#map[key] instanceof BehaviorSubject) {
-        assert(
-          !isObservable(value),
-          `Can't switch from normal value to observable value of prop: ${key}`,
-        )
-        this.#map[key].next(value)
-        continue
-      }
-      if (isObservable(this.#map[key]) && isObservable(value)) {
-        assert(
-          this.#map[key] === value,
-          `Can't change observable value of prop: ${key}`,
-        )
-      }
-    }
-  }
-
-  done() {
-    this.#loading$.next(false)
-  }
-}
-
-/**
- * @abstract
- * @template {IRenderElementNode | IRenderFragmentNode} N
- * @template T
- * @template E
- * @implements {IVDOMChildrenBase<N, T, E>}
- */
-class VDOMChildrenBase {
-  /**
-   * @param {IRenderer<T, E>} renderer
-   * @param {ComponentInstance} instance
-   */
-  constructor(renderer, instance) {
-    this.#renderer = renderer
-    this.instance = instance
-  }
-
-  #renderer
-
-  /** @type {Record<string, Subscription>} */
-  #subscriptions = {}
-
-  /** @type {Record<string, IRenderNode>} */
-  children = {}
-
-  /**
-   * @abstract
-   * @param {Record<string, IVDOMNode<T, E>>} _vdom
-   * @param {{ previous: string | null, next: string | null }} _simblings
-   * @param {ElementPlacement<T, E>} _parentPlacement
-   * @returns {ElementPlacement<T, E>}
-   */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  createChildPlacement(_vdom, _simblings, _parentPlacement) {
-    throw new Error(
-      "Abstract method: should be implemented by extending classes",
-    )
-  }
-
-  /**
-   * @param {Record<string, IVDOMNode<T, E>> | null} vdom
-   */
-  async placeChildren(vdom) {
-    if (vdom === null) return
-    for (const child of Object.values(vdom)) {
-      await child.place()
-    }
-  }
-
-  /**
-   * @param {Record<string, IVDOMNode<T, E>> | null} vdom
-   */
-  async removeChildren(vdom) {
-    if (vdom === null) return
-    for (const child of Object.values(vdom)) {
-      await child.remove()
-    }
-  }
-
-  /**
-   * @param {Record<string, IVDOMNode<T, E>>} vdom
-   * @param {N} node
-   * @param {ElementPlacement<T, E>} placement
-   */
-  async handleChildren(vdom, node, placement) {
-    const { added, removed, keys, simblings } = detectChildrenChanges(
-      node.children,
-      this.children,
-    )
-
-    for (const id of removed) {
-      assert(vdom[id], `VDOM Element with id "${id}" not found`)
-      assert(
-        this.#subscriptions[id],
-        `VDOM Subscription with id "${id}" not found`,
-      )
-      this.#subscriptions[id].unsubscribe()
-      console.debug("Removed VDOM element", id)
-      delete vdom[id]
-      delete this.#subscriptions[id]
-    }
-
-    for (const id of keys) {
-      const { previous, next } = simblings[id]
-      const childPlacement = this.createChildPlacement(
-        vdom,
-        { previous, next },
-        placement,
-      )
-      if (added.has(id)) {
-        assert(!vdom[id], `There is already a VDOM Element with id "${id}"`)
-        vdom[id] = createVDOMNode(
-          this.#renderer,
-          node.children[id],
-          childPlacement,
-          this.instance,
-        )
-        this.#subscriptions[id] = await vdom[id].subscribe()
-        console.debug("Added VDOM element", id)
-        continue
-      }
-
-      assert(vdom[id], `VDOM Element with id "${id}" not found`)
-      if (node.children[id] !== this.children[id])
-        vdom[id].apply(node.children[id], childPlacement)
-    }
-
-    this.children = node.children
-
-    return keys
-  }
-
-  unsubscribeChildren() {
-    Object.values(this.#subscriptions).forEach(subscription =>
-      subscription.unsubscribe(),
-    )
-    this.#subscriptions = {}
-    this.children = {}
-  }
-}
-
-/**
- * @template T
- * @template E
- * @implements {IVDOMNode<T, E>}
- */
-export class VDOMTextNode {
-  /**
-   * @param {IRenderer<T, E>} renderer
-   * @param {IRenderTextNode} node
-   * @param {ElementPlacement} placement
-   */
-  constructor(renderer, node, placement) {
-    this.#renderer = renderer
-    this.id = node.id
-    this.text = node.text
-    this.placement = placement
-    this.#element = renderer.createTextNode(node.text ?? "")
-    this.suspended$ = of(false)
-    this.#stream = new BehaviorSubject({ node, placement })
-  }
-
-  #element
-  #stream
-  #renderer
-  name = "text"
-  placed = false
-  mounted = false
-
-  async firstElement() {
-    return this.#element
-  }
-
-  async lastElement() {
-    return this.#element
-  }
-
-  async place() {
-    if (this.placed) return
-    await this.#renderer.place(this.#element, this.placement)
-    console.debug(`Placed Text Node ${this.id}`, this.#element)
-    this.placed = true
-  }
-
-  async remove() {
-    if (!this.placed) return
-    this.placed = false
-    this.#renderer.remove(this.#element, this.placement.parent)
-    console.debug(`Removed Text Node ${this.id}`)
-  }
-
-  /**
-   * @param {IRenderTextNode} node
-   * @param {ElementPlacement<T, E>} placement
-   */
-  apply(node, placement) {
-    console.debug("VDOMTextNode.apply", { name: this.name, node, placement })
-    this.#stream.next({ node, placement })
-  }
-
-  async subscribe() {
-    const subscription = new Subscription()
-    await new Promise(resolve =>
-      subscription.add(
-        this.#stream.subscribe(async ({ node, placement }) => {
-          this.placement = placement
-          if (!this.placed) {
-            await this.place()
-          }
-          if (!this.mounted) {
-            this.mounted = true
-            subscription.add(() => {
-              this.remove()
-              this.mounted = false
-            })
-            resolve(null)
-          }
-          if (node.text !== this.text) {
-            this.#renderer.setText(node.text ?? "", this.#element)
-            this.text = node.text
-          }
-        }),
-      ),
-    )
-
-    return subscription
-  }
-}
-/**
- * @template T
- * @template E
- * @implements {IVDOMNode<T, E>}
- * @extends {VDOMChildrenBase<IRenderElementNode, T, E>}
- */
-export class VDOMElementNode extends VDOMChildrenBase {
-  /**
-   * @param {IRenderer<T, E>} renderer
-   * @param {IRenderElementNode} node
-   * @param {ElementPlacement<T, E>} placement
-   * @param {ComponentInstance} instance
-   */
-  constructor(renderer, node, placement, instance) {
-    super(renderer, { ...instance, suspension: createSuspensionController() })
-    this.#renderer = renderer
-    this.id = node.id
-    this.name = node.tag
-    this.placement = placement
-    this.#element = renderer.createElement(node.tag)
-    this.#subscriptions = new Subscription()
-    this.#stream$ = new BehaviorSubject({ node, placement })
-    this.suspended$ = this.instance.suspension.suspended$
-    this.#propsSuspension = createSuspensionController()
-    this.#subscriptions.add(
-      instance.suspension.register(this.#propsSuspension.suspended$),
-    )
-    this.#subscriptions.add(instance.suspension.register(this.suspended$))
-  }
-
-  /** @type {Record<string, *>} */
-  props = {}
-
-  placed = false
-  mounted = false
-
-  /** @type {Record<string, () => void>} */
-  #events = {}
-
-  /** @type {Record<string, Subscription>} */
-  #propsSubscribers = {}
-  #propsSuspension
-  #subscriptions
-
-  /** @type {Promise<Record<string, IVDOMNode<T, E>>>} */
-  #vdom = Promise.resolve({})
-
-  #element
-  #renderer
-  #stream$
-
-  async firstElement() {
-    await this.#vdom
-    return this.#element
-  }
-
-  async lastElement() {
-    await this.#vdom
-    return this.#element
-  }
-
-  async place() {
-    if (this.placed) return
-    await this.#renderer.place(this.#element, this.placement)
-    this.placed = true
-    console.debug(
-      `Placed element ${this.id} (tag: ${this.name})`,
-      this.#element,
-    )
-  }
-
-  async remove() {
-    if (!this.placed) return
-    this.#renderer.remove(this.#element, this.placement.parent)
-    this.placed = false
-    console.debug(
-      `Removed element ${this.id} (tag: ${this.name})`,
-      this.#element,
-    )
-  }
-
-  /**
-   * @param {IRenderElementNode} node
-   * @param {ElementPlacement} placement
-   */
-  apply(node, placement) {
-    console.debug("VDOMElementNode.apply", { name: this.name, node, placement })
-    this.#stream$.next({ node, placement })
-  }
-
-  async subscribe() {
-    const subscription = new Subscription()
-    await new Promise(resolve =>
-      subscription.add(
-        this.#stream$.subscribe(async ({ node, placement }) => {
-          const vdom = await this.#vdom
-          this.placement = placement
-
-          /** @type {PromiseWithResolvers<Record<string, IVDOMNode<T, E>>>} */
-          const rendering = Promise.withResolvers()
-          this.#vdom = rendering.promise
-
-          const changedProps = shallowDiff(node.props, this.props)
-          if (changedProps.length > 0) {
-            const { props, events } =
-              this.#renderer.determinePropsAndEvents(changedProps)
-            for (const name of props) {
-              if (isObservable(node.props[name])) {
-                if (isObservableDelegate(node.props[name]))
-                  this.#propsSuspension.register(loading(node.props[name]))
-                this.#propsSubscribers[name]?.unsubscribe()
-                this.#propsSubscribers[name] = node.props[name].subscribe(
-                  value =>
-                    this.#renderer.setProperty(this.#element, name, value),
-                )
-                continue
-              }
-              this.#renderer.setProperty(this.#element, name, node.props[name])
-            }
-            for (const name of events) {
-              this.#events[name]?.()
-              if (isObservable(node.props[name])) {
-                this.#propsSubscribers[name]?.unsubscribe()
-                this.#propsSubscribers[name] = node.props[name].subscribe(
-                  value => {
-                    this.#events[name]?.()
-                    this.#events[name] = this.#renderer.listen(
-                      this.#element,
-                      name,
-                      /** @type {*} */ (value),
-                    )
-                  },
-                )
-                continue
-              }
-              this.#events[name] = this.#renderer.listen(
-                this.#element,
-                name,
-                node.props[name],
-              )
-            }
-          }
-
-          await this.handleChildren(vdom, node, placement)
-
-          if (!this.placed) {
-            await this.place()
-          } else {
-            await detectAndMove(this.#renderer, this.#element, placement)
-          }
-
-          if (!this.mounted) {
-            this.mounted = true
-            subscription.add(async () => {
-              await this.#vdom
-              this.#stream$.complete()
-              await this.remove()
-              Object.values(this.#events).map(unsubscribe => unsubscribe())
-              Object.values(this.#propsSubscribers).map(subscriber =>
-                subscriber.unsubscribe(),
-              )
-              this.instance.suspension.unsubscribe()
-              this.#propsSuspension.unsubscribe()
-              this.#subscriptions.unsubscribe()
-              this.unsubscribeChildren()
-              this.#vdom = Promise.resolve({})
-              this.mounted = false
-            })
-            resolve(null)
-          }
-
-          rendering.resolve(vdom)
-        }),
-      ),
-    )
-
-    return subscription
-  }
-
-  /**
-   * @param {Record<string, IVDOMNode<T, E>>} vdom
-   * @param {{ previous: string | null, next: string | null }} simblings
-   * @returns {ElementPlacement<T, E>}
-   */
-  createChildPlacement(vdom, { next, previous }) {
-    return {
-      parent: this.#element,
-      next: async () => {
-        if (!next) return null
-        return (await vdom[next]?.firstElement()) ?? null
-      },
-      previous: async () => {
-        if (!previous) return null
-        return (await vdom[previous]?.lastElement()) ?? null
-      },
-    }
-  }
-}
-
-/**
- * @template T
- * @template E
- * @implements {IVDOMNode<T, E>}
- */
-export class VDOMComponentNode {
-  /**
-   * @param {IRenderer<T, E>} renderer
-   * @param {IRenderComponentNode} node
-   * @param {ElementPlacement<T, E>} placement
-   * @param {ComponentInstance} upstream
-   */
-  constructor(renderer, node, placement, upstream) {
-    assert(
-      upstream.context instanceof ContextMap,
-      "component upstream instance context property should be instance of ContextMap class",
-    )
-    this.instance = {
-      context: upstream.context.downstream(),
-      suspension: createSuspensionController(),
-    }
-    this.#renderer = renderer
-    this.id = node.id
-    this.name = node.name
-    this.props = node.props
-    this.input = new Input(upstream, node.props)
-    this.placement = placement
-    this.placeholder = node.component.placeholder
-    this.suspended$ = this.instance.suspension.suspended$
-    this.#subscription = new Subscription()
-
-    this.#subscription.add(
-      this.instance.suspension.register(this.input.loading$),
-    )
-    if (!node.component.placeholder) {
-      this.#subscription.add(
-        upstream.suspension.register(this.instance.suspension.suspended$),
-      )
-    }
-
-    this.#stream$ = combineLatest({
-      render: asObservable(node.component(this.input)).pipe(
-        debounceTime(1),
-        map(node => toRenderNode(node)),
-        distinctUntilChanged(compareRenderNode),
-        tap(() => {
-          console.debug(`${node.name} rendered`)
-          this.input.done()
-        }),
-        startWith(null),
-      ),
-      pending: this.suspended$.pipe(
-        debounceTime(1),
-        filter(() => !!node.component.placeholder),
-        startWith(false),
-        distinctUntilChanged(),
-      ),
-    }).pipe(debounceTime(1))
-  }
-
-  /** @type {ComponentInstance} */
-  instance
-  #subscription
-  #renderer
-  #stream$
-
-  /** @type {Promise<Subscription> | null} */
-  #childSubscription = null
-
-  /** @type {IVDOMNode<T, E> | null} */
-  child = null
-  /** @type {IVDOMNode<T, E> | null} */
-  pending = null
-  isPending = false
-  lastRender = null
-
-  get placed() {
-    return (this.isPending ? this.pending?.placed : this.child?.placed) ?? false
-  }
-
-  async firstElement() {
-    await this.#childSubscription
-    if (this.isPending) return (await this.pending?.firstElement()) ?? null
-    return (await this.child?.firstElement()) ?? null
-  }
-
-  async lastElement() {
-    await this.#childSubscription
-    if (this.isPending) return (await this.pending?.lastElement()) ?? null
-    return (await this.child?.lastElement()) ?? null
-  }
-
-  /**
-   * @param {IRenderComponentNode} node
-   * @param {ElementPlacement<T, E>} placement
-   */
-  apply(node, placement) {
-    console.debug("VDOMComponentNode.apply", {
-      name: this.name,
-      node,
-      placement,
-    })
-    this.props = node.props
-    this.placement = placement
-    this.input.apply(node.props)
-  }
-
-  async remove() {
-    if (this.isPending) return await this.pending?.remove()
-    await this.child?.remove()
-  }
-
-  async place() {
-    if (this.isPending) return await this.pending?.place()
-    await this.child?.place()
-  }
-
-  async subscribe() {
-    const subscription = new Subscription()
-    await new Promise(resolve =>
-      subscription.add(
-        this.#stream$.subscribe(async ({ pending, render }) => {
-          if (pending) {
-            assert(
-              this.placeholder,
-              "component VDOM should never emit pending when placeholder is null",
-            )
-            this.isPending = true
-            await this.child?.remove()
-            if (!this.pending) {
-              this.pending = createVDOMNode(
-                this.#renderer,
-                toRenderNode(this.placeholder()),
-                this.placement,
-                this.instance,
-              )
-              subscription.add(await this.pending.subscribe())
-              resolve(null)
-              return
-            }
-
-            this.pending.apply(toRenderNode(this.placeholder()), this.placement)
-
-            if (!this.pending.placed) {
-              await this.pending.place()
-            }
-
-            return
-          }
-
-          this.isPending = false
-          await this.pending?.remove()
-          if (!this.child && !render) return
-          if (this.child && (!render || render.id !== this.child.id)) {
-            const componentSub = await this.#childSubscription
-            assert(
-              componentSub,
-              `Component child subscription not found for component ${this.name} (${this.id})`,
-            )
-            componentSub.unsubscribe()
-            subscription.remove(componentSub)
-            this.child = null
-            this.#childSubscription = null
-            this.lastRender = null
-          }
-          if (!this.child && render) {
-            this.child = createVDOMNode(
-              this.#renderer,
-              render,
-              this.placement,
-              this.instance,
-            )
-            this.#childSubscription = this.child.subscribe()
-            subscription.add(await this.#childSubscription)
-            subscription.add(() => {
-              // TODO: add unmount logic
-              this.#subscription.unsubscribe()
-              console.debug("Component VDOM Node destroyed", this)
-            })
-            this.lastRender = render
-            resolve(null)
-            console.debug(
-              `VDOM Component Child added: ${this.child.id} (${this.child.name})`,
-            )
-            return
-          }
-          if (this.child && render && render !== this.lastRender) {
-            this.child.apply(render, this.placement)
-            this.lastRender = render
-          }
-          return await this.place()
-        }),
-      ),
-    )
-    return subscription
-  }
-}
-
-/**
- * @template T
- * @template E
- * @implements {IVDOMNode<T, E>}
- * @extends {VDOMChildrenBase<IRenderFragmentNode, T, E>}
- */
-export class VDOMFragmentNode extends VDOMChildrenBase {
-  /**
-   * @param {IRenderer<T, E>} renderer
-   * @param {IRenderFragmentNode} node
-   * @param {ElementPlacement<T, E>} placement
-   * @param {ComponentInstance} instance
-   */
-  constructor(renderer, node, placement, instance) {
-    super(renderer, instance)
-    this.id = node.id
-    this.placement = placement
-    this.#stream$ = new BehaviorSubject({ node, placement })
-    this.suspended$ = of(false)
-  }
-
-  name = "Fragment"
-
-  #stream$
-
-  /** @type {Promise<Record<string, IVDOMNode<T, E>>>} */
-  #vdom = Promise.resolve({})
-
-  /** @type {string[]} */
-  #keys = []
-
-  placed = false
-  mounted = false
-
-  async firstElement() {
-    const vdom = await this.#vdom
-    return (await vdom[this.#keys[0]]?.firstElement()) ?? null
-  }
-
-  async lastElement() {
-    const vdom = await this.#vdom
-    if (this.#keys.length === 0) return null
-    return (
-      (await vdom[this.#keys[this.#keys.length - 1]]?.lastElement()) ?? null
-    )
-  }
-
-  async place() {
-    const vdom = await this.#vdom
-    if (this.placed) return
-    this.placeChildren(vdom)
-    this.placed = true
-  }
-
-  async remove() {
-    const vdom = await this.#vdom
-    if (!this.placed) return
-    this.removeChildren(vdom)
-    this.placed = false
-  }
-
-  /**
-   * @param {IRenderFragmentNode} node
-   * @param {ElementPlacement<T, E>} placement
-   */
-  apply(node, placement) {
-    this.#stream$.next({ node, placement })
-  }
-
-  async subscribe() {
-    const subscription = new Subscription()
-
-    await new Promise(resolve =>
-      subscription.add(
-        this.#stream$.subscribe(async ({ node, placement }) => {
-          const vdom = await this.#vdom
-          this.placement = placement
-
-          /** @type {PromiseWithResolvers<Record<string, IVDOMNode<T, E>>>} */
-          const rendering = Promise.withResolvers()
-          this.#vdom = rendering.promise
-
-          this.#keys = await this.handleChildren(vdom, node, placement)
-
-          if (!this.mounted) {
-            this.placed = true
-            this.mounted = true
-            subscription.add(() => {
-              this.#stream$.complete()
-              this.unsubscribeChildren()
-              this.#vdom = Promise.resolve({})
-              this.#keys = []
-              this.mounted = false
-            })
-            resolve(null)
-          }
-
-          rendering.resolve(vdom)
-        }),
-      ),
-    )
-
-    return subscription
-  }
-
-  /**
-   * @param {Record<string, IVDOMNode<T, E>>} vdom
-   * @param {{ previous: string | null, next: string | null }} simblings
-   * @param {ElementPlacement<T, E>} placement
-   * @returns {ElementPlacement<T, E>}
-   */
-  createChildPlacement(vdom, { previous, next }, placement) {
-    return {
-      parent: placement.parent,
-      next: async () => {
-        if (!next) return (await placement.next?.()) ?? null
-        return (
-          (await vdom[next]?.firstElement()) ??
-          (await placement.next?.()) ??
-          null
-        )
-      },
-      previous: async () => {
-        if (!previous) return (await placement.previous?.()) ?? null
-        return (
-          (await vdom[previous]?.lastElement()) ??
-          (await placement.previous?.()) ??
-          null
-        )
-      },
-    }
-  }
-}
-
-/**
- * @template T
- * @template E
- * @implements {IVDOMNode<T, E>}
- */
-class VDOMObservableNode {
-  /**
-   * @param {IRenderer<T, E>} renderer
-   * @param {IRenderObservableNode} node
-   * @param {ElementPlacement<T, E>} placement
-   * @param {ComponentInstance} instance
-   */
-  constructor(renderer, node, placement, instance) {
-    this.#renderer = renderer
-    this.placement = placement
-    this.instance = instance
-    this.#source$ = new BehaviorSubject(
-      node.source.pipe(
-        map(node => toRenderNode(node)),
-        share(),
-      ),
-    )
-    this.id = node.id
-    this.name = "Observable"
-    this.suspended$ = loading(node.source)
-    this.#suspension = instance.suspension.register(this.suspended$)
-  }
-
-  #renderer
-  #source$
-
-  /** @type {Promise<IVDOMNode<T, E> | null>} */
-  #vdom = Promise.resolve(null)
-
-  /** @type {Subscription | null} */
-  #subscription = null
-  /** @type {Subscription | null} */
-  #sourceSubscription = null
-  #suspension
-
-  placed = false
-
-  async firstElement() {
-    const vdom = await this.#vdom
-    return (await vdom?.firstElement()) ?? null
-  }
-
-  async lastElement() {
-    const vdom = await this.#vdom
-    return (await vdom?.lastElement()) ?? null
-  }
-
-  async place() {
-    if (this.placed) return
-    const vdom = await this.#vdom
-    await vdom?.place()
-    this.placed = true
-  }
-
-  async remove() {
-    if (!this.placed) return
-    const vdom = await this.#vdom
-    await vdom?.remove()
-    this.placed = false
-  }
-
-  /**
-   * @param {IRenderObservableNode} node
-   * @param {ElementPlacement<T, E>} placement
-   */
-  apply(node, placement) {
-    this.placement = placement
-    this.#source$.next(
-      node.source.pipe(
-        map(node => toRenderNode(node)),
-        share(),
-      ),
-    )
-  }
-
-  async subscribe() {
-    const subscriptions = new Subscription()
-
-    subscriptions.add(() => {
-      this.#subscription?.unsubscribe()
-      this.#sourceSubscription?.unsubscribe()
-      this.#subscription = null
-      this.#vdom = Promise.resolve(null)
-      this.placed = false
-      this.#suspension()
-    })
-
-    await new Promise(resolve =>
-      subscriptions.add(
-        this.#source$.subscribe(source => {
-          this.#sourceSubscription?.unsubscribe()
-          this.#sourceSubscription = source.subscribe(async node => {
-            const vdom = await this.#vdom
-
-            /** @type {PromiseWithResolvers<IVDOMNode<T, E> | null>} */
-            const rendering = Promise.withResolvers()
-            this.#vdom = rendering.promise
-
-            if (node !== null && (!vdom || vdom.id !== node.id)) {
-              this.#subscription?.unsubscribe()
-              const result = createVDOMNode(
-                this.#renderer,
-                node,
-                this.placement,
-                this.instance,
-              )
-              this.#subscription = await result.subscribe()
-              resolve(result)
-              return rendering.resolve(result)
-            }
-            if (vdom && node === null) {
-              assert(
-                this.#subscription !== null,
-                "When vdom is not null, #subscription should not be null",
-              )
-              this.#subscription.unsubscribe()
-              return rendering.resolve(null)
-            }
-            if (vdom && node !== null && vdom.id === node.id) {
-              vdom.apply(node, this.placement)
-              return rendering.resolve(vdom)
-            }
-            resolve(vdom)
-          })
-        }),
-      ),
-    )
-
-    return subscriptions
-  }
-}
-
-/**
- * @param {Obj} nextState
- * @param {Obj} previousState
- */
-function detectChildrenChanges(nextState, previousState) {
-  const keys = Object.keys(nextState)
-  const previous = Object.keys(previousState)
-  const all = new Set([...keys, ...previous])
-  /** @type {Set<string>} */
-  const added = new Set()
-  /** @type {Set<string>} */
-  const removed = new Set()
-  /** @type {Record<string, { next: string | null, previous: string | null }>} */
-  const simblings = {}
-
-  for (const key of all) {
-    if (!(key in nextState) && key in previousState) {
-      removed.add(key)
-      continue
-    }
-
-    if (key in nextState && !(key in previousState)) {
-      added.add(key)
-      continue
-    }
-  }
-
-  for (let i = 0; i < keys.length; i++) {
-    const previous = i > 0 ? keys[i - 1] : null
-    const key = keys[i]
-    const next = keys[i + 1] ?? null
-
-    simblings[key] = { next, previous }
-  }
+  const batch = new BatchRenderer(renderer, publisher$)
 
   return {
-    added,
-    removed: Array.from(removed),
-    keys,
-    previous,
-    simblings,
+    /**
+     * @param {ElementNode} node
+     */
+    mount(node) {
+      const subscription = new Subscription()
+
+      subscription.add(
+        publisher$
+          .pipe(
+            bufferTime(10),
+            filter(events => events.length > 0),
+          )
+          .subscribe(events => {
+            console.debug("[Batch] Render Events: BEGIN", events)
+            for (const event of events) {
+              switch (event.event) {
+                case VRenderEventType.PLACE:
+                  console.debug(
+                    "[BATCH] Render Events: Placing",
+                    event.payload,
+                    event.position,
+                  )
+                  renderer.place(event.payload, event.position)
+                  break
+                case VRenderEventType.REMOVE:
+                  console.debug(
+                    "[BATCH] Render Events: Removing",
+                    event.payload,
+                    event.position,
+                  )
+                  renderer.remove(event.payload, event.position.parent)
+                  break
+              }
+            }
+            console.debug("[Batch] Render Events: COMPLETED", events)
+          }),
+      )
+
+      const rootSuspensionContext = createSuspensionContext()
+
+      const rootNode = createNode(batch, "root", node, {
+        context: new ContextMap(),
+        suspension: rootSuspensionContext.downstream(),
+      })
+
+      subscription.add(
+        rootSuspensionContext.suspended$
+          .pipe(filter(suspended => suspended))
+          .subscribe(() => {
+            console.warn(
+              "Application root received a suspension notification, that means some child component has been suspended and not captured by any Suspense",
+            )
+          }),
+      )
+      subscription.add(rootNode.mount())
+
+      rootNode.placeIn({
+        parent: element,
+      })
+
+      return subscription
+    },
   }
 }
 
 /**
  * @template T
  * @template E
- * @template {T | E} EL
  * @param {IRenderer<T, E>} renderer
- * @param {EL} element
- * @param {ElementPlacement<T, E>} placement
+ * @param {string} parentId
+ * @param {ElementNode} node
+ * @param {ComponentInstance} instance
+ * @returns {VNode<T, E>}
  */
-async function detectAndMove(renderer, element, placement) {
-  const current = renderer.getPlacement(element, placement.parent)
+function createNode(renderer, parentId, node, instance) {
+  if (node === null || node === undefined) {
+    // TODO: it is really possible that just returning null will be better
 
-  const currentPrev = (await current.previous?.()) ?? null
-  const newPlacementPrev = (await placement.previous?.()) ?? null
+    return {
+      key: null,
+      get firstElement() {
+        return null
+      },
+      get lastElement() {
+        return null
+      },
+      mount() {
+        return new Subscription()
+      },
+      update() {},
+      placeIn() {},
+      remove() {},
+    }
+  }
+  if (isRenderNode(node)) {
+    switch (node.type) {
+      case VDOMType.ELEMENT:
+        return createElementNode(renderer, node, instance)
+      case VDOMType.FRAGMENT:
+        return createFragmentNode(renderer, node, instance)
+      case VDOMType.COMPONENT:
+        return createComponentNode(renderer, node, instance)
+      case VDOMType.SUSPENSE:
+        return createSuspenseNode(renderer, node, instance)
+    }
+  }
+  if (isObservable(node))
+    return createObservableNode(
+      renderer,
+      `${parentId}:observable`,
+      node,
+      instance,
+    )
+  if (Array.isArray(node))
+    return createChildrenNode(
+      renderer,
+      `${parentId}:array`,
+      node,
+      instance,
+      "indexAsDefaultKey",
+    )
+  return createTextNode(renderer, node)
+}
 
-  if (currentPrev !== newPlacementPrev) {
-    return await renderer.move(element, {
-      parent: placement.parent,
-      previous: placement.previous,
-    })
+/**
+ * @template T
+ * @template E
+ * @param {IRenderer<T, E>} renderer
+ * @param {IRenderText} value
+ * @returns {VNode<T, E, IRenderText>}
+ */
+function createTextNode(renderer, value) {
+  /** @type {T | null} */
+  let node = null
+  /** @type {ElementPosition<T, E> | null} */
+  let currentPosition = null
+  let placed = false
+
+  return {
+    key: null,
+    get firstElement() {
+      return node
+    },
+    get lastElement() {
+      return node
+    },
+    mount() {
+      node = renderer.createTextNode(String(value))
+      return new Subscription(() => {
+        remove()
+        node = null
+        currentPosition = null
+      })
+    },
+    update(next) {
+      assert(node, "text node element must not be null when updating")
+      if (next !== value) {
+        renderer.setText(String(next), node)
+        value = next
+      }
+    },
+    placeIn,
+    remove,
+  }
+
+  /**
+   * @param {ElementPosition<T, E>} position
+   */
+  function placeIn(position) {
+    if (placed && position === currentPosition) return
+    assert(node, "text node element must not be null when placing it in DOM")
+    renderer.place(node, position)
+    currentPosition = position
+    placed = true
+  }
+
+  function remove() {
+    if (!placed) return
+    assert(node, "text node element must not be null when unmounting")
+    assert(
+      currentPosition,
+      "text node element current position must not be null when unmounting",
+    )
+    renderer.remove(node, currentPosition.parent)
+    placed = false
   }
 }
 
 /**
- * @returns {SuspensionController}
+ * @template T
+ * @template E
+ * @param {IRenderer<T, E>} renderer
+ * @param {IRenderElementNode} node
+ * @param {ComponentInstance} instance
+ * @returns {VNodeWithChildren<T, E, IRenderElementNode>}
  */
-export function createSuspensionController() {
-  const control$ = new BehaviorSubject(
-    /** @type {Observable<boolean>[]} */ ([]),
+function createElementNode(renderer, node, instance) {
+  /** @type {E | null} */
+  let element = null
+  /** @type {ElementPosition<T, E> | null} */
+  let currentPosition = null
+  /** @type {{ events: Record<string, Subscription>, props: Record<string, Subscription>, suspensions: Record<string, Subscription>, children: Subscription | null }} */
+  let subscriptions = {
+    children: null,
+    events: {},
+    props: {},
+    suspensions: {},
+  }
+  /** @type {Record<string, BehaviorSubject<Observable<unknown>>>} */
+  let observables = {}
+  /** @type {Record<string, () => void>} */
+  let listeners = {}
+
+  /** @type {VChildren<T, E> | null} */
+  let children = null
+
+  let placed = false
+
+  /** @type {Record<string, SuspensionController>} */
+  let propsSuspensions = {}
+
+  return {
+    key: node.key ?? null,
+    get firstElement() {
+      return element
+    },
+    get lastElement() {
+      return element
+    },
+    get children() {
+      return children
+    },
+    mount() {
+      element = renderer.createElement(node.tag)
+      updateProps(null, node.props)
+      children = createChildrenNode(
+        renderer,
+        node.id,
+        node.children,
+        downstream(),
+      )
+      subscriptions.children = children.mount()
+
+      children.placeIn({
+        parent: element,
+      })
+
+      return new Subscription(() => {
+        remove()
+        children = null
+        element = null
+        subscriptions.children?.unsubscribe()
+        Array.of(
+          ...Object.values(subscriptions.events),
+          ...Object.values(subscriptions.props),
+          ...Object.values(subscriptions.suspensions),
+        ).forEach(sub => sub.unsubscribe())
+        instance.suspension.complete()
+        Object.values(propsSuspensions).map(suspension => suspension.complete())
+        propsSuspensions = {}
+      })
+    },
+    update(nextNode) {
+      assert(
+        children,
+        "element children node must not be null while updating element!",
+      )
+      updateProps(node.props, nextNode.props)
+      children.update(nextNode.children)
+    },
+    placeIn,
+    remove,
+  }
+
+  /**
+   * @param {Record<string, unknown> | null} current
+   * @param {Record<string, unknown> | null} next
+   */
+  function updateProps(current, next) {
+    if (current === null && next === null) return
+    const changedProps = shallowDiff(current ?? {}, next ?? {})
+    const { props, events } = renderer.determinePropsAndEvents(changedProps)
+    for (const name of props) {
+      const value = next?.[name] ?? null
+      if (name === "ref") {
+        if (value instanceof ElementRef) {
+          observables[name].complete()
+          subscriptions.props[name]?.unsubscribe()
+          delete subscriptions.props[name]
+          delete observables[name]
+          value.set(element)
+        } else if (isObservable(value)) {
+          observables[name] ??= new BehaviorSubject(value)
+          if (subscriptions.props[name]) {
+            observables[name].next(value)
+          }
+          subscriptions.props[name] ??= observables[name]
+            .pipe(switchMap(source => source))
+            .subscribe(value => {
+              assert(element, "element should not be null when setting ref")
+              if (value instanceof ElementRef) value.set(element)
+            })
+        }
+
+        continue
+      }
+      if (isObservableDelegate(value)) {
+        propsSuspensions[name] ??= instance.suspension.downstream()
+        const suspension = propsSuspensions[name]
+        subscriptions.suspensions[name]?.unsubscribe()
+        subscriptions.suspensions[name] = pending(value).subscribe(pending =>
+          pending ? suspension.suspend() : suspension.resume(),
+        )
+      }
+      if (isObservable(value)) {
+        observables[name] ??= new BehaviorSubject(value)
+        if (subscriptions.props[name]) {
+          observables[name].next(value)
+        }
+        subscriptions.props[name] ??= observables[name]
+          .pipe(switchMap(source => source))
+          .subscribe(value => {
+            assert(element, "element should not be null when setting props")
+            renderer.setProperty(element, name, value)
+          })
+        continue
+      }
+      if (observables[name] && subscriptions.props[name]) {
+        delete observables[name]
+        subscriptions.props[name].unsubscribe()
+        delete subscriptions.props[name]
+      }
+      assert(element, "element should not be null when setting props")
+      renderer.setProperty(element, name, value)
+    }
+    for (const name of events) {
+      const value = next?.[name]
+      if (isObservable(value)) {
+        listeners[name] = (...args) =>
+          value.pipe(take(1)).subscribe(value => {
+            if (typeof value === "function") value(...args)
+          })
+      } else if (typeof value === "function") {
+        listeners[name] = /** @type {() => void} */ (value)
+      } else if (listeners[name]) {
+        delete listeners[name]
+      }
+
+      if (listeners[name] && !subscriptions.events[name]) {
+        assert(element, "element should not be null when attaching listeners")
+        subscriptions.events[name] = new Subscription(
+          renderer.listen(element, name, (...args) =>
+            listeners[name]?.(...args),
+          ),
+        )
+      } else if (!listeners[name] && subscriptions.events[name]) {
+        subscriptions.events[name].unsubscribe()
+        delete subscriptions.events[name]
+      }
+    }
+  }
+
+  /**
+   * @param {ElementPosition<T, E>} position
+   */
+  function placeIn(position) {
+    if (placed && position === currentPosition) return
+    assert(element, "text node element must not be null when placing it in DOM")
+    renderer.place(element, position)
+    currentPosition = position
+    placed = true
+  }
+
+  function remove() {
+    if (!placed) return
+    assert(element, "element must not be null while removing it from DOM!")
+    assert(
+      currentPosition,
+      "element current position must not be null removing it from DOM!",
+    )
+    renderer.remove(element, currentPosition.parent)
+    placed = false
+  }
+
+  function downstream() {
+    return {
+      ...instance,
+      suspension: instance.suspension.downstream(),
+    }
+  }
+}
+
+/**
+ * @template T
+ * @template E
+ * @param {IRenderer<T, E>} renderer
+ * @param {IRenderFragmentNode} node
+ * @param {ComponentInstance} instance
+ * @returns {VNodeWithChildren<T, E, IRenderFragmentNode>}
+ */
+function createFragmentNode(renderer, node, instance) {
+  /** @type {VChildren<T, E> | null} */
+  let children = null
+
+  return {
+    key: node.key ?? null,
+    get children() {
+      return children
+    },
+    get firstElement() {
+      return children?.firstElement ?? null
+    },
+    get lastElement() {
+      return children?.lastElement ?? null
+    },
+    mount() {
+      children = createChildrenNode(renderer, node.id, node.children, instance)
+      return children.mount()
+    },
+    update(nextNode) {
+      assert(children, "children must not be null while updating fragment node")
+      children.update(nextNode.children)
+    },
+    placeIn(position) {
+      assert(
+        children,
+        "children must not be null while placing its elements into DOM!",
+      )
+      children.placeIn(position)
+    },
+    remove() {
+      assert(
+        children,
+        "children must not be null while removing its elements from DOM!",
+      )
+      children.remove()
+    },
+  }
+}
+
+/**
+ * @template T
+ * @template E
+ * @param {IRenderer<T, E>} renderer
+ * @param {string} parentId
+ * @param {ElementNode} render
+ * @param {ComponentInstance} instance
+ * @param {'indexAsDefaultKey' | 'noDefaultKey'} [defaultKey="noDefaultKey"]
+ * @returns {VChildren<T, E>}
+ */
+function createChildrenNode(
+  renderer,
+  parentId,
+  render,
+  instance,
+  defaultKey = "noDefaultKey",
+) {
+  /** @type {Record<string, Subscription>} */
+  const subscriptions = {}
+
+  /** @type {Record<string, VNode<T, E>>} */
+  let nodes = {}
+
+  /** @type {ElementPosition<T, E> | null} */
+  let firstPosition = null
+
+  /** @type {T | E | null} */
+  let firstElement = null
+  /** @type {T | E | null} */
+  let lastElement = null
+
+  /** @type {ElementNode[]} */
+  let children = []
+
+  let placed = false
+
+  return {
+    key: null,
+    get nodes() {
+      return nodes
+    },
+    get firstElement() {
+      return firstElement
+    },
+    get lastElement() {
+      return lastElement
+    },
+    mount() {
+      children = asArray(render)
+      for (let index = 0; index < children.length; index++) {
+        const child = children[index]
+        const id = genId(parentId, child, defaultKey, index)
+        const node = createNode(renderer, id, child, downstream())
+        nodes = { ...nodes, [id]: node }
+        subscriptions[id] = node.mount()
+        if (index === 0) firstElement = node.firstElement
+        if (index === children.length - 1) lastElement = node.lastElement
+      }
+      return new Subscription(() => {
+        nodes = {}
+        Object.values(subscriptions).forEach(sub => sub.unsubscribe())
+        instance.suspension.complete()
+      })
+    },
+    update(nextRender) {
+      assert(
+        firstPosition,
+        "children node first element position must not be null while updating!",
+      )
+      let currentPosition = firstPosition
+      const nextChildren = asArray(nextRender)
+
+      /** @type {Set<string>} */
+      const nextIds = new Set()
+      nextChildren.forEach(node =>
+        nextIds.add(genId(parentId, node, defaultKey)),
+      )
+
+      for (let n = 0, p = 0; n < nextChildren.length || p < children.length; ) {
+        const next = nextChildren[n]
+        const current = children[p]
+        const nextId = genId(parentId, next, defaultKey, n)
+        const currentId = genId(parentId, current, defaultKey, p)
+        const node = nodes[currentId]
+        assert(
+          node,
+          `There must be a vdom node to the current render node id. Missing node id: ${currentId}`,
+        )
+        if (currentId === nextId) {
+          node.update(next)
+          currentPosition = {
+            ...currentPosition,
+            previous: currentPosition,
+            get lastElement() {
+              return node.lastElement ?? undefined
+            },
+          }
+          n++
+          p++
+          continue
+        }
+        if (!nodes[nextId]) {
+          // ids don't match, because the next node does not exist yet.
+          const newNode = createNode(renderer, nextId, next, downstream())
+          nodes = { ...nodes, [nextId]: newNode }
+          subscriptions[nextId] = newNode.mount()
+          newNode.placeIn(currentPosition)
+          currentPosition = {
+            ...currentPosition,
+            previous: currentPosition,
+            get lastElement() {
+              return newNode.lastElement ?? undefined
+            },
+          }
+          n++
+          continue
+        }
+        if (!nextIds.has(currentId)) {
+          // ids don't match, the current node does not exist on next render
+          assert(
+            subscriptions[currentId],
+            "the existing node must have a subscription!",
+          )
+
+          subscriptions[currentId].unsubscribe()
+          delete nodes[currentId]
+          delete subscriptions[currentId]
+          p++
+          continue
+        }
+        // ids don't match, both current and next render nodes exists, they need to be swapped.
+        nodes[currentId].remove()
+        nodes[nextId].placeIn(currentPosition)
+        currentPosition = {
+          ...currentPosition,
+          previous: currentPosition,
+          get lastElement() {
+            return nodes[nextId].lastElement ?? undefined
+          },
+        }
+        n++
+        p++
+      }
+      children = nextChildren
+    },
+    placeIn(position) {
+      if (placed && position === firstPosition) return
+      assert(
+        children,
+        "children must not be null while placing elements into DOM!",
+      )
+      firstPosition = position
+      let currentPosition = firstPosition
+      for (let index = 0; index < children.length; index++) {
+        const child = children[index]
+        const id = genId(parentId, child, defaultKey, index)
+        const node = nodes[id]
+        assert(
+          node,
+          `there must exist a VDOM node to the children node with id ${id}`,
+        )
+        node.placeIn(currentPosition)
+        currentPosition = {
+          ...currentPosition,
+          previous: currentPosition,
+          get lastElement() {
+            return node.lastElement ?? undefined
+          },
+        }
+      }
+      placed = true
+    },
+    remove() {
+      if (!placed) return
+      assert(
+        children,
+        "children must not be null while placing elements into DOM!",
+      )
+      assert(
+        firstPosition,
+        "children node first element position must not be null when removing elements from DOM!",
+      )
+      let currentPosition = firstPosition
+      for (let index = 0; index < children.length; index++) {
+        const child = children[index]
+        const id = genId(parentId, child, defaultKey, index)
+        const node = nodes[id]
+        assert(
+          node,
+          `there must exist a VDOM node to the children node with id ${id}`,
+        )
+        node.remove()
+        currentPosition = {
+          ...currentPosition,
+          previous: currentPosition,
+          get lastElement() {
+            return node.lastElement ?? undefined
+          },
+        }
+      }
+      placed = false
+    },
+  }
+
+  function downstream() {
+    return {
+      ...instance,
+      suspension: instance.suspension.downstream(),
+    }
+  }
+}
+
+/**
+ * @template T
+ * @template E
+ * @param {IRenderer<T, E>} renderer
+ * @param {string} parentId
+ * @param {Observable<ElementNode>} input$
+ * @param {ComponentInstance} instance
+ * @returns {VNodeObservable<T, E>}
+ */
+function createObservableNode(renderer, parentId, input$, instance) {
+  /** @type {string | null} */
+  let id = null
+  /** @type {VNode<T, E> | null} */
+  let latest = null
+  /** @type {Subscription | null} */
+  let latestSubscription = null
+  /** @type {ElementPosition<T, E> | null} */
+  let currentPosition = null
+
+  const subject$ = new BehaviorSubject(input$)
+  const source$ = subject$.pipe(
+    switchMap(input$ => input$),
+    distinctUntilChanged(),
+    shareReplay(),
   )
+  const pending$ = subject$.pipe(switchMap(input$ => pending(input$)))
+
+  let placed = false
+
+  return {
+    get key() {
+      return latest?.key ?? null
+    },
+    get latest() {
+      return latest
+    },
+    get firstElement() {
+      return latest?.firstElement ?? null
+    },
+    get lastElement() {
+      return latest?.lastElement ?? null
+    },
+    mount() {
+      const subscription = new Subscription()
+      subscription.add(
+        pending$.subscribe(isPending => {
+          if (isPending) return instance.suspension.suspend()
+          return instance.suspension.resume()
+        }),
+      )
+      subscription.add(
+        source$.subscribe(node => {
+          if (latest === null) {
+            id = genId(parentId, node, "noDefaultKey")
+            latest = createNode(renderer, id, node, downstream())
+            latestSubscription = latest.mount()
+            subscription.add(latestSubscription)
+            return
+          }
+          const nextId = genId(parentId, node, "noDefaultKey")
+          if (nextId !== id) {
+            assert(
+              currentPosition,
+              "observable node's current position must not be null when replacing vdom nodes",
+            )
+            assert(
+              latestSubscription,
+              "observable node's latest render subscription must not be null when replacing vdom nodes",
+            )
+            id = nextId
+            subscription.remove(latestSubscription)
+            latestSubscription.unsubscribe()
+            latest = createNode(renderer, id, node, downstream())
+            latestSubscription = latest.mount()
+            latest.placeIn(currentPosition)
+            subscription.add(latestSubscription)
+            return
+          }
+          latest.update(node)
+        }),
+      )
+
+      subscription.add(() => {
+        instance.suspension.complete()
+      })
+
+      return subscription
+    },
+    update(next) {
+      subject$.next(next)
+    },
+    placeIn(position) {
+      if (placed && position === currentPosition) return
+      placed = true
+      source$
+        .pipe(
+          take(1),
+          filter(() => placed),
+        )
+        .subscribe(() => {
+          if (placed && position === currentPosition) return
+          assert(
+            latest,
+            "observable node latest vdom must not be null when placing elements into DOM!",
+          )
+          currentPosition = position
+          latest.placeIn(currentPosition)
+        })
+    },
+    remove() {
+      if (!placed) return
+      latest?.remove()
+      placed = false
+    },
+  }
+
+  function downstream() {
+    return {
+      ...instance,
+      suspension: instance.suspension.downstream(),
+    }
+  }
+}
+
+/**
+ * @template T
+ * @template E
+ * @param {IRenderer<T, E>} renderer
+ * @param {IRenderComponentNode} node
+ * @param {ComponentInstance} instance
+ * @returns {VNodeComponent<T, E>}
+ */
+function createComponentNode(renderer, node, instance) {
+  /** @type {VNode<T, E> | null} */
+  let content = null
+  const props$ = new BehaviorSubject(node.props)
+  const input = new Input(props$, instance)
+  /** @type {Subscription | null} */
+  let subscription = null
+  /** @type {ElementPosition<T, E> | null} */
+  let currentPosition = null
+
+  let placed = false
+
+  return {
+    key: node.key ?? null,
+    get content() {
+      return content
+    },
+    get firstElement() {
+      return content?.firstElement ?? null
+    },
+    get lastElement() {
+      return content?.lastElement ?? null
+    },
+    mount() {
+      const render = node.component(input)
+
+      content = createNode(renderer, node.id, render, downstream())
+
+      subscription = content.mount()
+
+      return new Subscription(() => subscription?.unsubscribe())
+    },
+    update(nextNode) {
+      assert(
+        currentPosition,
+        "component current position must not be null at update stage",
+      )
+      assert(
+        subscription,
+        "component subscription must not be null at update stage",
+      )
+      if (node.component !== nextNode.component) {
+        subscription.unsubscribe()
+
+        props$.next(nextNode.props)
+
+        const render = nextNode.component(input)
+
+        content = createNode(renderer, nextNode.id, render, downstream())
+
+        subscription = content.mount()
+
+        content.placeIn(currentPosition)
+
+        return
+      }
+
+      props$.next(nextNode.props)
+    },
+    placeIn(position) {
+      if (placed && position === currentPosition) return
+      assert(
+        content,
+        "component node vdom content must not be null while placing elements into DOM!",
+      )
+      content.placeIn(position)
+      currentPosition = position
+    },
+    remove() {
+      if (!placed) return
+      assert(
+        content,
+        "component node vdom content must not be null while remove elements from DOM!",
+      )
+      content.remove()
+    },
+  }
+
+  /**
+   * @returns {ComponentInstance}
+   */
+  function downstream() {
+    assert(
+      instance.context instanceof ContextMap,
+      "component instance.context must be instance of ContextMap!",
+    )
+    return {
+      suspension: instance.suspension,
+      context: instance.context.downstream(),
+    }
+  }
+}
+
+/**
+ * @template T
+ * @template E
+ * @param {IRenderer<T, E>} renderer
+ * @param {IRenderSuspenseNode} node
+ * @param {ComponentInstance} instance
+ * @returns {VNode<T, E, IRenderSuspenseNode>}
+ */
+function createSuspenseNode(renderer, node, instance) {
+  /** @type {VNode<T, E> | null} */
+  let children = null
+  /** @type {ElementPosition<T, E> | null} */
+  let currentPosition = null
+  /** @type {VNode<T, E> | null} */
+  let fallback = null
+  /** @type {VNode<T, E> | null} */
+  let current = null
+
+  const context = createSuspensionContext()
+
+  return {
+    get key() {
+      return node.key ?? null
+    },
+    get firstElement() {
+      return current?.firstElement ?? null
+    },
+    get lastElement() {
+      return current?.lastElement ?? null
+    },
+
+    mount() {
+      fallback = createNode(renderer, node.id, node.fallback, instance)
+      children = createNode(
+        renderer,
+        node.id,
+        node.children,
+        downstream(context),
+      )
+      current = fallback
+      const subscription = new Subscription()
+      subscription.add(fallback.mount())
+      subscription.add(children.mount())
+      subscription.add(() => {
+        current = null
+        fallback = null
+        children = null
+      })
+      subscription.add(
+        context.suspended$
+          .pipe(distinctUntilChanged(), debounceTime(10))
+          .subscribe(suspended => {
+            assert(
+              fallback,
+              "suspense node's fallback VDOM must not be null on suspend event",
+            )
+            assert(
+              children,
+              "suspense node's children VDOM must not be null on suspend event",
+            )
+            if (current) current.remove()
+            if (suspended) current = fallback
+            else current = children
+            if (currentPosition) current.placeIn(currentPosition)
+          }),
+      )
+      return subscription
+    },
+    update(nextNode) {
+      assert(
+        fallback,
+        "suspense node's fallback VDOM must not be null when updating",
+      )
+      assert(
+        children,
+        "suspense node's children VDOM must not be null when updating",
+      )
+      fallback.update(nextNode.fallback)
+      children.update(nextNode.children)
+    },
+    placeIn(position) {
+      assert(
+        current,
+        "suspense current vdom node must not be null when updating",
+      )
+      currentPosition = position
+      current.placeIn(position)
+    },
+    remove() {
+      assert(current, "current vdom node must not be null")
+      current.remove()
+    },
+  }
+
+  /**
+   * @param {SuspensionContext} context
+   */
+  function downstream(context) {
+    return {
+      ...instance,
+      suspension: context.downstream(),
+    }
+  }
+}
+
+/**
+ * @param {string} parentId
+ * @param {ElementNode} node
+ * @param {'indexAsDefaultKey' | 'noDefaultKey'} defaultKey
+ * @param {number} [index]
+ */
+function genId(parentId, node, defaultKey, index) {
+  const id = isRenderNode(node) ? node.id : `${parentId}:inline`
+  const key = isRenderNode(node)
+    ? (node.key ?? (defaultKey === "indexAsDefaultKey" ? index : null))
+    : index
+  if (key === undefined) return id
+  return `${id}:${key}`
+}
+
+/**
+ * @returns {SuspensionContext}
+ */
+function createSuspensionContext() {
+  /** @type {Set<symbol>} */
+  const symbols = new Set()
+  const control$ = new BehaviorSubject(symbols)
 
   return {
     suspended$: control$.pipe(
-      switchMap(control =>
-        control.length ? combineLatest(control) : of([false]),
-      ),
-      map(suspensions => suspensions.some(suspended => suspended)),
+      map(suspensions => suspensions.size > 0),
       debounceTime(1),
       distinctUntilChanged(),
     ),
-    register(observable) {
-      control$.next([...control$.value, observable])
-      return () => control$.next(control$.value.filter(ob => ob !== observable))
+    downstream,
+    complete() {
+      symbols.clear()
+      control$.complete()
     },
-    unsubscribe() {
-      control$.next([])
-    },
+  }
+
+  function downstream() {
+    const symbol = Symbol()
+    return {
+      suspend() {
+        symbols.add(symbol)
+        control$.next(symbols)
+      },
+      resume() {
+        symbols.delete(symbol)
+        control$.next(symbols)
+      },
+      complete() {
+        symbols.delete(symbol)
+        control$.next(symbols)
+      },
+      downstream,
+    }
   }
 }

@@ -13,6 +13,10 @@ export interface IState<T> extends Observable<T> {
   set(value: T): void
 }
 
+export interface Ref<T> extends IState<T | null> {
+  kind: "ref"
+}
+
 export interface IDeferred<T> {
   kind: "stream"
   value$: Observable<T>
@@ -27,9 +31,16 @@ export type ILoading<T> =
   | { isLoading: false; value: T }
 
 export type SuspensionController = {
+  suspend(): void
+  resume(): void
+  downstream(): SuspensionController
+  complete(): void
+}
+
+export type SuspensionContext = {
   suspended$: Observable<boolean>
-  register(suspended$: Observable<boolean>): () => void
-  unsubscribe(): void
+  downstream(): SuspensionController
+  complete(): void
 }
 
 export interface IContextMap {
@@ -47,18 +58,13 @@ export type CombineOutput<T> = {
 }
 
 export type Properties<T> = {
-  [K in keyof T]: T[K] | Observable<T[K]>
+  [K in keyof T]: T[K] extends Ref<infer V> ? Ref<V> : T[K] | Observable<T[K]>
 }
 
-export type Props<P> = {
-  [K in keyof P]-?: P[K] extends Observable<infer V> ? V : Observable<P[K]>
-}
-
-export interface Inputs<P> extends Observable<P> {
-  props: Props<P>
-  props$: Observable<P>
-  props$$: Observable<Props<P>>
-  context: IContextMap
+export type InputTake<P> = {
+  [K in keyof P]-?: P[K] extends Observable<infer V>
+    ? Observable<V>
+    : Observable<P[K]>
 }
 
 export type PropsWithChildren<T = {}> = T & {
@@ -80,38 +86,31 @@ export interface ComponentInstance {
 export interface Component<P> {
   (props: Observable<P>): ElementNode
   displayName?: string
-  defaultProps?: *
-  placeholder?(): ElementNode
 }
 
-export interface ElementPlacement<T = unknown, E = unknown> {
+export interface ElementPosition<T = unknown, E = unknown> {
   parent: E
-  previous?(): Promise<T | E | null>
-  next?(): Promise<T | E | null>
+  previous?: ElementPosition<T, E>
+  lastElement?: T | E
 }
 
 interface RenderBase {
   id: string
+  key: number | string | undefined
   compareTo(node: IRenderNode)
 }
 
 export type IRenderNode =
   | IRenderElementNode
-  | IRenderTextNode
   | IRenderComponentNode
   | IRenderFragmentNode
-  | IRenderObservableNode
+  | IRenderSuspenseNode
 
 export interface IRenderElementNode extends RenderBase {
   type: (typeof VDOMType)["ELEMENT"]
   tag: string
   props: Record<string, any>
-  children: Record<string, IRenderNode>
-}
-
-export interface IRenderTextNode extends RenderBase {
-  type: (typeof VDOMType)["TEXT"]
-  text: string | null
+  children: ElementNode
 }
 
 export interface IRenderComponentNode extends RenderBase {
@@ -123,13 +122,16 @@ export interface IRenderComponentNode extends RenderBase {
 
 export interface IRenderFragmentNode extends RenderBase {
   type: (typeof VDOMType)["FRAGMENT"]
-  children: Record<string, IRenderNode>
+  children: ElementNode
 }
 
-export interface IRenderObservableNode extends RenderBase {
-  type: (typeof VDOMType)["OBSERVABLE"]
-  source: Observable<ElementNode>
+export interface IRenderSuspenseNode extends RenderBase {
+  type: (typeof VDOMType)["SUSPENSE"]
+  fallback: ElementNode
+  children: ElementNode
 }
+
+export type IRenderText = string | number | bigint | boolean
 
 export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
   createTextNode(text: string): TextNode
@@ -143,27 +145,16 @@ export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
   }
   place(
     node: TextNode | ElementNode,
-    placement: ElementPlacement<TextNode, ElementNode>,
-  ): Promise<void>
-  move(
-    node: TextNode | ElementNode,
-    placement: ElementPlacement<TextNode, ElementNode>,
-  ): Promise<void>
+    position: ElementPosition<TextNode, ElementNode>,
+  ): void
   remove(node: TextNode | ElementNode, target: ElementNode): void
-  getPlacement(
-    node: TextNode | ElementNode,
-    parent: ElementNode,
-  ): ElementPlacement<TextNode, ElementNode>
 }
 
 export type ElementNode =
   | Observable<ElementNode>
   | IRenderNode
-  | string
-  | number
-  | bigint
+  | IRenderText
   | ElementNode[]
-  | boolean
   | null
   | undefined
 
@@ -246,15 +237,6 @@ declare namespace JsxRx {
    * @see {@link https://react.dev/learn/rendering-lists#keeping-list-items-in-order-with-key React Docs}
    */
   type Key = string | number | bigint
-
-  interface RefObject<T> {
-    /**
-     * The current value of the ref.
-     */
-    current: T
-  }
-
-  type Ref<T> = RefObject<T | null> | null
 
   /**
    * @internal The props any component can receive.
@@ -527,7 +509,9 @@ declare namespace JsxRx {
 
   interface HTMLProps<T> extends AllHTMLAttributes<T>, ClassAttributes<T> {}
 
-  type DetailedHTMLProps<E extends HTMLAttributes<T>, T> = ClassAttributes<T> &
+  type DetailedHTMLProps<E extends HTMLAttributes<T>, T> = Properties<
+    ClassAttributes<T>
+  > &
     Properties<E>
 
   interface SVGProps<T> extends SVGAttributes<T>, ClassAttributes<T> {}

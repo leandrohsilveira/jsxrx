@@ -1,0 +1,6 @@
+{
+  "$schema": "https://www.schemastore.org/jsconfig.json",
+  "extends": [
+    "../../jsconfig.json"
+  ]
+}

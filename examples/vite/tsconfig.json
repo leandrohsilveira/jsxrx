@@ -1,10 +1,15 @@
 {
   "$schema": "https://www.schemastore.org/jsconfig.json",
-  "extends": ["../../jsconfig.json"],
+  "extends": [
+    "../../jsconfig.json"
+  ],
   "compilerOptions": {
-    "outDir": "./dist",
-    "jsx": "react-jsx",
-    "jsxImportSource": "@jsxrx/core"
+    "outDir": "./dist"
   },
-  "include": ["./src/**/*.jsx", "./src/**/*.tsx", "./src/*.jsx", "./src/*.tsx"]
+  "include": [
+    "./src/**/*.jsx",
+    "./src/**/*.tsx",
+    "./src/*.jsx",
+    "./src/*.tsx"
+  ]
 }

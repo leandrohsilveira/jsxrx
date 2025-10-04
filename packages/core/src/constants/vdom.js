@@ -4,4 +4,5 @@ export const VDOMType = Object.freeze({
   COMPONENT: "COMPONENT",
   FRAGMENT: "FRAGMENT",
   OBSERVABLE: "OBSERVABLE",
+  SUSPENSE: "SUSPENSE",
 })

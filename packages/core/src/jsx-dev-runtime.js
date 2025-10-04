@@ -3,8 +3,8 @@
  */
 
 import { Fragment } from "./fragment.js"
-import { asArray } from "@jsxrx/utils"
-import { _fragment, _jsx } from "./vdom/render.js"
+import { Suspense } from "./suspense.js"
+import { _fragment, _jsx, _suspense } from "./vdom/render.js"
 
 export { Fragment }
 
@@ -19,9 +19,11 @@ export { Fragment }
 export function jsxDEV(tag, { children, ...props }, key, _isStatic, source) {
   try {
     if (tag === Fragment)
-      return _fragment(genId("fragment", source), asArray(children), key)
+      return _fragment(genId("fragment", source), children, key)
+    if (tag === Suspense)
+      return _suspense(genId("suspense", source), props, children, key)
     const name = typeof tag === "string" ? tag : "component"
-    return _jsx(genId(name, source), tag, props, asArray(children), key)
+    return _jsx(genId(name, source), tag, props, children, key)
   } catch (error) {
     const cause = error instanceof Error && error.cause
     console.error(`Error encountered while rendering ${tag}`, {

@@ -1,6 +1,6 @@
 /**
  * @import { Operator } from "rxjs"
- * @import { IState, IDeferred as IDeferred, CombineOutput, ILoading } from "./jsx"
+ * @import { IState, IDeferred as IDeferred, CombineOutput, Properties, ComponentInstance, InputTake, Ref } from "./jsx"
  */
 
 import { shallowEqual } from "@jsxrx/utils"
@@ -11,15 +11,15 @@ import {
   distinctUntilChanged,
   filter,
   isObservable,
+  map,
   merge,
   Observable,
   of,
   share,
-  shareReplay,
   switchMap,
   tap,
 } from "rxjs"
-import { isRenderNode } from "./vdom"
+import { compareProps, isRenderNode } from "./vdom"
 
 /**
  * @template T
@@ -78,6 +78,109 @@ class ObservableDelegate extends Observable {
 /**
  * @template T
  * @extends {ObservableDelegate<T>}
+ */
+export class Input extends ObservableDelegate {
+  /**
+   * @param {Observable<Properties<T>>} props$
+   * @param {ComponentInstance} instance
+   */
+  constructor(props$, instance) {
+    super(
+      props$.pipe(
+        debounceTime(1),
+        switchMap(props =>
+          combineLatest(
+            /** @type {{ [K in keyof T]: Observable<T[K]> }} */ (
+              Object.fromEntries(
+                Object.entries(props).map(([key, value]) => {
+                  if (isObservable(value)) return [key, value]
+                  return [key, of(value)]
+                }),
+              )
+            ),
+          ),
+        ),
+        distinctUntilChanged(compareProps),
+      ),
+    )
+    this.#props$ = props$
+    this.context = instance.context
+  }
+
+  #props$
+
+  /**
+   * @template {Partial<T>} [D=T]
+   * @param {D} [defaultProps]
+   * @returns {InputTake<T & D>}
+   */
+  take(defaultProps) {
+    return this.#take(null, defaultProps)
+  }
+
+  /**
+   * @template {Partial<T>} [D=T]
+   * @param {D} [defaultProps]
+   * @returns {Observable<InputTake<T & D>>}
+   */
+  spread(defaultProps) {
+    return this.#props$.pipe(
+      map(props => Object.keys(props)),
+      debounceTime(1),
+      distinctUntilChanged(shallowEqual),
+      map(keys => this.#take(keys, defaultProps)),
+    )
+  }
+
+  /**
+   * @template {Partial<T>} [D=T]
+   * @param {(string | symbol)[] | null} keys
+   * @param {D} [defaultProps]
+   * @returns {InputTake<T & D>}
+   */
+  #take(keys, defaultProps) {
+    return new Proxy(/** @type {InputTake<T & D>} */ ({}), {
+      get: (_, key) => {
+        const name = String(key)
+        const defValue = /** @type {*} */ (defaultProps)?.[name]
+        const props$ = /** @type {Observable<*>} */ (this.#props$)
+        return new ObservableDelegate(
+          props$.pipe(
+            debounceTime(1),
+            switchMap(props => {
+              const value = /** @type {*} */ (props[name])
+              if (value instanceof ElementRef) return of(value)
+              if (isObservable(value))
+                return value.pipe(map(value => value ?? defValue))
+              return of(value ?? defValue)
+            }),
+            distinctUntilChanged(),
+          ),
+          props$.pipe(
+            debounceTime(1),
+            switchMap(props => {
+              const value = /** @type {*} */ (props[name])
+              if (isObservableDelegate(value)) return value.source
+              if (isObservable(value)) return value
+              return of(value)
+            }),
+          ),
+        )
+      },
+      has(_, key) {
+        if (keys === null)
+          throw new Error(
+            "take() object does not support spreading, use spread() instead",
+          )
+        return keys.indexOf(key) >= 0
+      },
+    })
+  }
+}
+
+/**
+ * @template T
+ * @extends {ObservableDelegate<T>}
  * @implements {IState<T>}
  */
 export class State extends ObservableDelegate {
@@ -101,6 +204,24 @@ export class State extends ObservableDelegate {
   set(value) {
     this.#value$.next(value)
   }
+}
+
+/**
+ * @template T
+ * @extends {State<T | null>}
+ * @implements {Ref<T>}
+ */
+export class ElementRef extends State {
+  /**
+   * @param {new () => T} _
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  constructor(_) {
+    super(new BehaviorSubject(/** @type {T | null} */ (null)))
+  }
+
+  /** @type {"ref"} */
+  kind = "ref"
 }
 
 /**
@@ -158,10 +279,10 @@ export function combine(data) {
 
 /**
  * @param {Observable<unknown>} value
- * @param {number} [debounce=10]
+ * @param {number} [debounce=5]
  * @returns {Observable<boolean>}
  */
-export function loading(value, debounce = 10) {
+export function pending(value, debounce = 5) {
   if (isObservableDelegate(value)) {
     const pending$ = new BehaviorSubject(true)
     const observed = value.source.pipe(tap(() => pending$.next(true)))

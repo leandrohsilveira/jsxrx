@@ -4,7 +4,13 @@
     "checkJs": true,
     "strict": true,
     "module": "NodeNext",
-    "moduleResolution": "nodenext"
+    "moduleResolution": "nodenext",
+    "jsx": "react-jsx",
+    "jsxImportSource": "@jsxrx/core"
   },
-  "exclude": ["node_modules", "**/node_modules", "**/dist"]
+  "exclude": [
+    "node_modules",
+    "**/node_modules",
+    "**/dist"
+  ]
 }

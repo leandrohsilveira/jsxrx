@@ -1,52 +1,60 @@
-import { loading, props, PropsWithChildren, render, state } from "@jsxrx/core"
-import { delay, Observable, shareReplay } from "rxjs"
+import { pending, Props, PropsWithChildren, state, Suspense } from "@jsxrx/core"
+import { createRoot } from "@jsxrx/core/dom"
+import { delay, map, Observable } from "rxjs"
 
 function App() {
-  const count = state(0)
+  const count$ = state(0)
 
-  const delayedCount = count.pipe(delay(1000), shareReplay())
-  const countLoading = loading(delayedCount)
+  const delayedCount$ = count$.pipe(delay(1000))
+
+  const countPending$ = pending(delayedCount$)
 
   function increase() {
-    count.set(count.value + 1)
+    count$.set(count$.value + 1)
   }
 
   function decrease() {
-    count.set(count.value - 1)
+    count$.set(count$.value - 1)
   }
 
   return (
-    <CountDisplay count={delayedCount}>
-      <button type="button" disabled={countLoading} onClick={increase}>
+    <CountDisplay count={delayedCount$}>
+      <Suspense fallback={<div>Count is ?</div>}>
+        {delayedCount$.pipe(
+          map(count =>
+            count % 2 === 0 ? (
+              <div>Count is even</div>
+            ) : (
+              <div>Count is odd</div>
+            ),
+          ),
+        )}
+      </Suspense>
+      <button type="button" disabled={countPending$} onClick={increase}>
         Increase
       </button>
-      <button type="button" disabled={countLoading} onClick={decrease}>
+      <button type="button" disabled={countPending$} onClick={decrease}>
         Decrease
       </button>
     </CountDisplay>
   )
 }
 
-App.placeholder = () => <div>Loading application...</div>
+type CountDisplayProps = PropsWithChildren<{
+  count?: number
+}>
 
-function CountDisplay(
-  input$: Observable<PropsWithChildren<{ count?: number }>>,
-) {
-  const { count, children } = props(input$)
+function CountDisplay(input$: Observable<CountDisplayProps>) {
+  const { count, children } = Props.take(input$, { count: 0 })
+
   return (
     <>
-      <div>The count is {count}</div>
+      <Suspense fallback={<div>Loading count...</div>}>
+        <div>The count is {count}</div>
+      </Suspense>
       {children}
     </>
   )
 }
 
-CountDisplay.placeholder = () => <div>Loading count...</div>
-
-const root = document.querySelector("[root]")
-
-const vdom = render(<App />, root)
-
-await vdom.subscribe()
-
-console.log("VDOM Ready", vdom)
+createRoot(document.querySelector("[root]")).mount(<App />)
