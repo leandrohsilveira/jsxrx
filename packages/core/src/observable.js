@@ -167,6 +167,17 @@ export class Input extends ObservableDelegate {
           ),
         )
       },
+      getOwnPropertyDescriptor(target, p) {
+        console.log("getOwnPropertyDescriptor", p)
+        return {
+          writable: false,
+          enumerable: true,
+          configurable: true,
+        }
+      },
+      ownKeys() {
+        return keys ?? []
+      },
       has(_, key) {
         if (keys === null)
           throw new Error(
