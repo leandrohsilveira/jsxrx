@@ -37,7 +37,7 @@ export function ref(construct) {
 export class Props {
   /**
    * @template P
-   * @template {Partial<P>} [D=P]
+   * @template [D=P]
    * @param {Observable<P>} input$
    * @param {D} [defaultProps]
    */
@@ -51,7 +51,7 @@ export class Props {
 
   /**
    * @template P
-   * @template {Partial<P>} [D=P]
+   * @template [D=P]
    * @param {Observable<P>} input$
    * @param {D} [defaultProps]
    */
