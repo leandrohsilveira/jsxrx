@@ -17,6 +17,7 @@ import {
   of,
   share,
   startWith,
+  Subscription,
   switchMap,
   tap,
 } from "rxjs"
@@ -117,8 +118,14 @@ export class Input extends ObservableDelegate {
         distinctUntilChanged(compareProps),
       ),
     )
+    const unmounted$ = new BehaviorSubject(false)
+    this.unmounted$ = unmounted$.pipe(filter(value => value))
     this.#props$ = props$
     this.context = instance.context
+    this.subscription = new Subscription(() => {
+      unmounted$.next(true)
+      unmounted$.complete()
+    })
   }
 
   #props$
@@ -144,6 +151,13 @@ export class Input extends ObservableDelegate {
       distinctUntilChanged(shallowEqual),
       map(keys => this.#take(keys, defaultProps)),
     )
+  }
+
+  /**
+   * @param {Subscription} subscription
+   */
+  observe(subscription) {
+    this.subscription.add(subscription)
   }
 
   /**

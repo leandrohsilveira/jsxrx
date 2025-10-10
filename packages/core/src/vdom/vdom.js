@@ -844,7 +844,11 @@ function createComponentNode(renderer, node, instance) {
 
       subscription = content.mount()
 
-      return new Subscription(() => subscription?.unsubscribe())
+      return new Subscription(() => {
+        subscription?.unsubscribe()
+        props$.complete()
+        input.subscription.unsubscribe()
+      })
     },
     update(nextNode) {
       assert(

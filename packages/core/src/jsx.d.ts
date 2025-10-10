@@ -93,9 +93,11 @@ export type Properties<T> = {
 }
 
 export type InputTake<P> = {
-  [K in keyof P]-?: P[K] extends Observable<infer V>
-    ? Observable<V>
-    : Observable<P[K]>
+  [K in keyof P]-?: P[K] extends Ref<infer V>
+    ? Observable<Ref<V>>
+    : P[K] extends Observable<infer V>
+      ? Observable<V>
+      : Observable<P[K]>
 }
 
 export type PropsWithChildren<T = {}> = T & {

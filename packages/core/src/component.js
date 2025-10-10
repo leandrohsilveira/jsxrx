@@ -4,7 +4,7 @@
  */
 
 import { assert } from "@jsxrx/utils"
-import { BehaviorSubject, take } from "rxjs"
+import { BehaviorSubject, identity, isObservable, switchMap, take } from "rxjs"
 import { Defer, ElementRef, Input, State } from "./observable"
 
 /**
@@ -65,8 +65,20 @@ export function defer(value) {
 
 /**
  * @template T
+ * @param {ElementRef<T> | Observable<Ref<T>>} value
+ * @returns {Observable<T | null>}
+ */
+export function fromRef(value) {
+  if (value instanceof ElementRef) {
+    return value.pipe(identity)
+  }
+  return value.pipe(switchMap(value => value))
+}
+
+/**
+ * @template T
  * @param {new () => T} construct
- * @returns {Ref<T>}
+ * @returns {ElementRef<T>}
  */
 export function ref(construct) {
   return new ElementRef(construct)
