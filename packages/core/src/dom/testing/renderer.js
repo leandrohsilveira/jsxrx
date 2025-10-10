@@ -10,9 +10,6 @@ export function createTestingRenderer() {
     throwError("createElement"),
   )
   vi.spyOn(renderer, "place").mockImplementation(throwError("place"))
-  vi.spyOn(renderer, "getPlacement").mockImplementation(
-    throwError("getPlacement"),
-  )
   vi.spyOn(renderer, "setProperty").mockImplementation(
     throwError("setProperty"),
   )
@@ -21,7 +18,6 @@ export function createTestingRenderer() {
     throwError("createTextNode"),
   )
   vi.spyOn(renderer, "setText").mockImplementation(throwError("setText"))
-  vi.spyOn(renderer, "move").mockImplementation(throwError("move"))
   return renderer
 }
 

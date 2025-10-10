@@ -1,10 +1,10 @@
 /**
  * @import { Observable } from "rxjs"
- * @import { IState, IDeferred, InputTake, Ref } from "./jsx"
+ * @import { IState, IDeferred, InputTake, Ref, Emitter, OptionalEmitter } from "./jsx"
  */
 
 import { assert } from "@jsxrx/utils"
-import { BehaviorSubject } from "rxjs"
+import { BehaviorSubject, take } from "rxjs"
 import { Defer, ElementRef, Input, State } from "./observable"
 
 /**
@@ -14,6 +14,44 @@ import { Defer, ElementRef, Input, State } from "./observable"
  */
 export function state(initialValue) {
   return new State(new BehaviorSubject(initialValue))
+}
+
+/**
+ * @template {(...args: *) => *} T
+ * @overload
+ * @param {Observable<T>} value$
+ * @returns {Emitter<T>}
+ */
+/**
+ * @template {((...args: *) => *)} T
+ * @overload
+ * @param {Observable<T | null | undefined>} value$
+ * @returns {OptionalEmitter<T>}
+ */
+/**
+ * @template {((...args: *) => *) | null | undefined} T
+ * @param {Observable<T>} value$
+ * @returns {Emitter<T> | OptionalEmitter<T>}
+ */
+export function emitter(value$) {
+  return /** @type {*} */ ({
+    // @ts-expect-error yeah implicit any[]
+    async emit(...args) {
+      return new Promise((resolve, reject) => {
+        return value$.pipe(take(1)).subscribe({
+          next: async fn => {
+            if (!fn) return resolve(undefined)
+            try {
+              return resolve(await fn(...args))
+            } catch (err) {
+              return reject(err)
+            }
+          },
+          error: reject,
+        })
+      })
+    },
+  })
 }
 
 /**

@@ -69,11 +69,15 @@ export class ContextMap {
   }
 
   /**
-   * @template T
-   * @param {Context<T>} context
-   * @returns {Observable<T>}
+   * @template {IContext<any>} T
+   * @param {T} context
+   * @returns {Observable<T['initialValue']>}
    */
   require(context) {
+    assert(
+      context instanceof Context,
+      "The context to be required needs to be instance of Context class",
+    )
     return this.#upstream$.pipe(
       switchMap(contexts => {
         const value$ = contexts[context.symbol]

@@ -2,6 +2,9 @@
  * @import { IRenderer, ElementPosition } from "../jsx.js"
  */
 
+import { Subscription } from "rxjs"
+import { findPreviousLastElement } from "../renderer/positioning.js"
+
 /**
  * @class
  * @implements {IRenderer<Text, Element>}
@@ -75,18 +78,19 @@ export class DOMRenderer {
    * @param {ElementPosition<Text, Element>} position
    */
   place(node, position) {
-    let previous = position.lastElement
-    while (
-      (previous === undefined || previous.parentElement !== position.parent) &&
-      position.previous
-    ) {
-      position = position.previous
-      previous = position.lastElement
+    const previous = findPreviousLastElement(this, position)
+    if (previous.lastElement) {
+      return previous.lastElement.after(node)
     }
-    if (previous) {
-      return previous.after(node)
-    }
-    return position.parent.prepend(node)
+    return previous.parent.prepend(node)
+  }
+
+  /**
+   * @param {Text | Element} node
+   * @param {ElementPosition<Text, Element>} position
+   */
+  move(node, position) {
+    this.place(node, position)
   }
 
   /**
@@ -95,5 +99,17 @@ export class DOMRenderer {
    */
   remove(node, parent) {
     if (node.parentNode === parent) parent.removeChild(node)
+  }
+
+  /**
+   * @param {Text | Element} node
+   * @returns {Element | null}
+   */
+  getParent(node) {
+    return node.parentElement
+  }
+
+  subscribe() {
+    return new Subscription()
   }
 }

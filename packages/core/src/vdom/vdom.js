@@ -1,19 +1,18 @@
 /**
  * @import { Observable } from "rxjs"
  * @import { ComponentInstance, ElementNode, ElementPosition, IRenderComponentNode, IRenderElementNode, IRenderer, IRenderFragmentNode, IRenderSuspenseNode, IRenderText, SuspensionContext, SuspensionController } from "../jsx.js"
- * @import { VChildren, VNode, VNodeComponent, VNodeObservable, VNodeWithChildren, VRenderEvent, VRoot } from "./types.js"
+ * @import { VChildren, VNode, VNodeComponent, VNodeObservable, VNodeWithChildren, VRoot } from "./types.js"
  */
 
 import { asArray, assert, shallowDiff } from "@jsxrx/utils"
 import {
   BehaviorSubject,
-  bufferTime,
+  combineLatest,
   debounceTime,
   distinctUntilChanged,
   filter,
   isObservable,
   map,
-  shareReplay,
   Subject,
   Subscription,
   switchMap,
@@ -28,8 +27,7 @@ import {
   pending,
 } from "../observable.js"
 import { isRenderNode } from "./render.js"
-import { BatchRenderer } from "./batch-renderer.js"
-import { VRenderEventType } from "../constants/render.js"
+import { findPreviousLastElement } from "../renderer/positioning.js"
 
 /**
  * @template T
@@ -41,11 +39,6 @@ import { VRenderEventType } from "../constants/render.js"
 export function createRoot(renderer, element) {
   assert(element, "Root element must not be null")
 
-  /** @type {Subject<VRenderEvent<T, E>>} */
-  const publisher$ = new Subject()
-
-  const batch = new BatchRenderer(renderer, publisher$)
-
   return {
     /**
      * @param {ElementNode} node
@@ -53,41 +46,11 @@ export function createRoot(renderer, element) {
     mount(node) {
       const subscription = new Subscription()
 
-      subscription.add(
-        publisher$
-          .pipe(
-            bufferTime(10),
-            filter(events => events.length > 0),
-          )
-          .subscribe(events => {
-            console.debug("[Batch] Render Events: BEGIN", events)
-            for (const event of events) {
-              switch (event.event) {
-                case VRenderEventType.PLACE:
-                  console.debug(
-                    "[BATCH] Render Events: Placing",
-                    event.payload,
-                    event.position,
-                  )
-                  renderer.place(event.payload, event.position)
-                  break
-                case VRenderEventType.REMOVE:
-                  console.debug(
-                    "[BATCH] Render Events: Removing",
-                    event.payload,
-                    event.position,
-                  )
-                  renderer.remove(event.payload, event.position.parent)
-                  break
-              }
-            }
-            console.debug("[Batch] Render Events: COMPLETED", events)
-          }),
-      )
+      subscription.add(renderer.subscribe())
 
       const rootSuspensionContext = createSuspensionContext()
 
-      const rootNode = createNode(batch, "root", node, {
+      const rootNode = createNode(renderer, "root", node, {
         context: new ContextMap(),
         suspension: rootSuspensionContext.downstream(),
       })
@@ -123,23 +86,7 @@ export function createRoot(renderer, element) {
  */
 function createNode(renderer, parentId, node, instance) {
   if (node === null || node === undefined) {
-    // TODO: it is really possible that just returning null will be better
-
-    return {
-      key: null,
-      get firstElement() {
-        return null
-      },
-      get lastElement() {
-        return null
-      },
-      mount() {
-        return new Subscription()
-      },
-      update() {},
-      placeIn() {},
-      remove() {},
-    }
+    return createNullNode(renderer)
   }
   if (isRenderNode(node)) {
     switch (node.type) {
@@ -175,6 +122,42 @@ function createNode(renderer, parentId, node, instance) {
  * @template T
  * @template E
  * @param {IRenderer<T, E>} renderer
+ * @returns {VNode<T, E, null | undefined>}
+ */
+function createNullNode(renderer) {
+  /** @type {ElementPosition<T, E> | null} */
+  let currentPosition = null
+  return {
+    key: null,
+    type: VDOMType.NULL,
+    get placed() {
+      return currentPosition !== null
+    },
+    get lastElement() {
+      if (!currentPosition) return null
+      const previousPosition = findPreviousLastElement(
+        renderer,
+        currentPosition,
+      )
+      return previousPosition?.lastElement ?? null
+    },
+    mount() {
+      return new Subscription()
+    },
+    update() {},
+    placeIn(position) {
+      currentPosition = position
+    },
+    remove() {
+      currentPosition = null
+    },
+  }
+}
+
+/**
+ * @template T
+ * @template E
+ * @param {IRenderer<T, E>} renderer
  * @param {IRenderText} value
  * @returns {VNode<T, E, IRenderText>}
  */
@@ -186,9 +169,10 @@ function createTextNode(renderer, value) {
   let placed = false
 
   return {
+    type: VDOMType.TEXT,
     key: null,
-    get firstElement() {
-      return node
+    get placed() {
+      return placed
     },
     get lastElement() {
       return node
@@ -269,9 +253,11 @@ function createElementNode(renderer, node, instance) {
   let propsSuspensions = {}
 
   return {
+    type: VDOMType.ELEMENT,
+    name: node.tag,
     key: node.key ?? null,
-    get firstElement() {
-      return element
+    get placed() {
+      return placed
     },
     get lastElement() {
       return element
@@ -452,12 +438,13 @@ function createFragmentNode(renderer, node, instance) {
   let children = null
 
   return {
+    type: VDOMType.FRAGMENT,
     key: node.key ?? null,
+    get placed() {
+      return children?.placed ?? false
+    },
     get children() {
       return children
-    },
-    get firstElement() {
-      return children?.firstElement ?? null
     },
     get lastElement() {
       return children?.lastElement ?? null
@@ -510,13 +497,11 @@ function createChildrenNode(
   /** @type {Record<string, VNode<T, E>>} */
   let nodes = {}
 
+  /** @type {VNode<T, E>[]} */
+  let positions = []
+
   /** @type {ElementPosition<T, E> | null} */
   let firstPosition = null
-
-  /** @type {T | E | null} */
-  let firstElement = null
-  /** @type {T | E | null} */
-  let lastElement = null
 
   /** @type {ElementNode[]} */
   let children = []
@@ -524,15 +509,16 @@ function createChildrenNode(
   let placed = false
 
   return {
+    type: VDOMType.CHILDREN,
     key: null,
+    get placed() {
+      return placed
+    },
     get nodes() {
       return nodes
     },
-    get firstElement() {
-      return firstElement
-    },
     get lastElement() {
-      return lastElement
+      return positions.at(-1)?.lastElement ?? null
     },
     mount() {
       children = asArray(render)
@@ -542,8 +528,6 @@ function createChildrenNode(
         const node = createNode(renderer, id, child, downstream())
         nodes = { ...nodes, [id]: node }
         subscriptions[id] = node.mount()
-        if (index === 0) firstElement = node.firstElement
-        if (index === children.length - 1) lastElement = node.lastElement
       }
       return new Subscription(() => {
         nodes = {}
@@ -565,6 +549,8 @@ function createChildrenNode(
         nextIds.add(genId(parentId, node, defaultKey)),
       )
 
+      positions = []
+
       for (let n = 0, p = 0; n < nextChildren.length || p < children.length; ) {
         const next = nextChildren[n]
         const current = children[p]
@@ -577,13 +563,8 @@ function createChildrenNode(
         )
         if (currentId === nextId) {
           node.update(next)
-          currentPosition = {
-            ...currentPosition,
-            previous: currentPosition,
-            get lastElement() {
-              return node.lastElement ?? undefined
-            },
-          }
+          positions.push(node)
+          currentPosition = nextPosition(currentPosition, n)
           n++
           p++
           continue
@@ -594,13 +575,8 @@ function createChildrenNode(
           nodes = { ...nodes, [nextId]: newNode }
           subscriptions[nextId] = newNode.mount()
           newNode.placeIn(currentPosition)
-          currentPosition = {
-            ...currentPosition,
-            previous: currentPosition,
-            get lastElement() {
-              return newNode.lastElement ?? undefined
-            },
-          }
+          positions.push(newNode)
+          currentPosition = nextPosition(currentPosition, n)
           n++
           continue
         }
@@ -620,13 +596,8 @@ function createChildrenNode(
         // ids don't match, both current and next render nodes exists, they need to be swapped.
         nodes[currentId].remove()
         nodes[nextId].placeIn(currentPosition)
-        currentPosition = {
-          ...currentPosition,
-          previous: currentPosition,
-          get lastElement() {
-            return nodes[nextId].lastElement ?? undefined
-          },
-        }
+        positions.push(nodes[nextId])
+        currentPosition = nextPosition(currentPosition, n)
         n++
         p++
       }
@@ -640,6 +611,7 @@ function createChildrenNode(
       )
       firstPosition = position
       let currentPosition = firstPosition
+      positions = []
       for (let index = 0; index < children.length; index++) {
         const child = children[index]
         const id = genId(parentId, child, defaultKey, index)
@@ -648,14 +620,9 @@ function createChildrenNode(
           node,
           `there must exist a VDOM node to the children node with id ${id}`,
         )
+        positions.push(node)
         node.placeIn(currentPosition)
-        currentPosition = {
-          ...currentPosition,
-          previous: currentPosition,
-          get lastElement() {
-            return node.lastElement ?? undefined
-          },
-        }
+        currentPosition = nextPosition(currentPosition, index)
       }
       placed = true
     },
@@ -665,11 +632,6 @@ function createChildrenNode(
         children,
         "children must not be null while placing elements into DOM!",
       )
-      assert(
-        firstPosition,
-        "children node first element position must not be null when removing elements from DOM!",
-      )
-      let currentPosition = firstPosition
       for (let index = 0; index < children.length; index++) {
         const child = children[index]
         const id = genId(parentId, child, defaultKey, index)
@@ -679,16 +641,23 @@ function createChildrenNode(
           `there must exist a VDOM node to the children node with id ${id}`,
         )
         node.remove()
-        currentPosition = {
-          ...currentPosition,
-          previous: currentPosition,
-          get lastElement() {
-            return node.lastElement ?? undefined
-          },
-        }
       }
       placed = false
     },
+  }
+
+  /**
+   * @param {ElementPosition<T, E>} currentPosition
+   * @param {number} index
+   * @returns {ElementPosition<T, E>}
+   */
+  function nextPosition(currentPosition, index) {
+    return {
+      ...currentPosition,
+      get lastElement() {
+        return positions[index]?.lastElement ?? undefined
+      },
+    }
   }
 
   function downstream() {
@@ -715,34 +684,61 @@ function createObservableNode(renderer, parentId, input$, instance) {
   let latest = null
   /** @type {Subscription | null} */
   let latestSubscription = null
-  /** @type {ElementPosition<T, E> | null} */
-  let currentPosition = null
 
   const subject$ = new BehaviorSubject(input$)
   const source$ = subject$.pipe(
     switchMap(input$ => input$),
     distinctUntilChanged(),
-    shareReplay(),
   )
-  const pending$ = subject$.pipe(switchMap(input$ => pending(input$)))
+  const selfPending$ = new BehaviorSubject(true)
+  const inputPending$ = subject$.pipe(switchMap(input$ => pending(input$)))
+  const pending$ = combineLatest([selfPending$, inputPending$]).pipe(
+    map(pendings => pendings.some(pending => pending)),
+    distinctUntilChanged(),
+  )
+
+  /** @type {Subject<VNode<T, E> | null>} */
+  const latest$ = new Subject()
+  /** @type {Subject<ElementPosition<T, E>>} */
+  const position$ = new Subject()
+  const placement$ = combineLatest({
+    node: latest$,
+    position: position$,
+  }).pipe(
+    distinctUntilChanged(
+      (a, b) => a.node === b.node && a.position === b.position,
+    ),
+  )
 
   let placed = false
 
   return {
+    type: VDOMType.OBSERVABLE,
+    get placed() {
+      return placed
+    },
+    get name() {
+      return latest?.name
+    },
     get key() {
       return latest?.key ?? null
     },
     get latest() {
       return latest
     },
-    get firstElement() {
-      return latest?.firstElement ?? null
-    },
     get lastElement() {
       return latest?.lastElement ?? null
     },
     mount() {
       const subscription = new Subscription()
+      subscription.add(
+        placement$.subscribe(({ node, position }) => {
+          if (node === latest) return
+          latest?.remove()
+          node?.placeIn(position)
+          latest = node
+        }),
+      )
       subscription.add(
         pending$.subscribe(isPending => {
           if (isPending) return instance.suspension.suspend()
@@ -753,17 +749,15 @@ function createObservableNode(renderer, parentId, input$, instance) {
         source$.subscribe(node => {
           if (latest === null) {
             id = genId(parentId, node, "noDefaultKey")
-            latest = createNode(renderer, id, node, downstream())
-            latestSubscription = latest.mount()
+            const content = createNode(renderer, id, node, downstream())
+            latestSubscription = content.mount()
             subscription.add(latestSubscription)
+            selfPending$.next(false)
+            latest$.next(content)
             return
           }
           const nextId = genId(parentId, node, "noDefaultKey")
           if (nextId !== id) {
-            assert(
-              currentPosition,
-              "observable node's current position must not be null when replacing vdom nodes",
-            )
             assert(
               latestSubscription,
               "observable node's latest render subscription must not be null when replacing vdom nodes",
@@ -771,13 +765,13 @@ function createObservableNode(renderer, parentId, input$, instance) {
             id = nextId
             subscription.remove(latestSubscription)
             latestSubscription.unsubscribe()
-            latest = createNode(renderer, id, node, downstream())
-            latestSubscription = latest.mount()
-            latest.placeIn(currentPosition)
+            const content = createNode(renderer, id, node, downstream())
+            latestSubscription = content.mount()
+            latest$.next(content)
             subscription.add(latestSubscription)
             return
           }
-          latest.update(node)
+          latest?.update(node)
         }),
       )
 
@@ -791,22 +785,7 @@ function createObservableNode(renderer, parentId, input$, instance) {
       subject$.next(next)
     },
     placeIn(position) {
-      if (placed && position === currentPosition) return
-      placed = true
-      source$
-        .pipe(
-          take(1),
-          filter(() => placed),
-        )
-        .subscribe(() => {
-          if (placed && position === currentPosition) return
-          assert(
-            latest,
-            "observable node latest vdom must not be null when placing elements into DOM!",
-          )
-          currentPosition = position
-          latest.placeIn(currentPosition)
-        })
+      position$.next(position)
     },
     remove() {
       if (!placed) return
@@ -845,11 +824,15 @@ function createComponentNode(renderer, node, instance) {
 
   return {
     key: node.key ?? null,
+    type: VDOMType.COMPONENT,
+    get placed() {
+      return placed
+    },
+    get name() {
+      return node.name
+    },
     get content() {
       return content
-    },
-    get firstElement() {
-      return content?.firstElement ?? null
     },
     get lastElement() {
       return content?.lastElement ?? null
@@ -887,6 +870,7 @@ function createComponentNode(renderer, node, instance) {
 
         return
       }
+      node = nextNode
 
       props$.next(nextNode.props)
     },
@@ -898,6 +882,7 @@ function createComponentNode(renderer, node, instance) {
       )
       content.placeIn(position)
       currentPosition = position
+      placed = true
     },
     remove() {
       if (!placed) return
@@ -906,6 +891,7 @@ function createComponentNode(renderer, node, instance) {
         "component node vdom content must not be null while remove elements from DOM!",
       )
       content.remove()
+      placed = false
     },
   }
 
@@ -935,8 +921,6 @@ function createComponentNode(renderer, node, instance) {
 function createSuspenseNode(renderer, node, instance) {
   /** @type {VNode<T, E> | null} */
   let children = null
-  /** @type {ElementPosition<T, E> | null} */
-  let currentPosition = null
   /** @type {VNode<T, E> | null} */
   let fallback = null
   /** @type {VNode<T, E> | null} */
@@ -944,18 +928,53 @@ function createSuspenseNode(renderer, node, instance) {
 
   const context = createSuspensionContext()
 
+  /** @type {Subject<VNode<T, E> | null>} */
+  const node$ = new Subject()
+  /** @type {Subject<ElementPosition<T, E>>} */
+  const position$ = new Subject()
+  const source$ = combineLatest({
+    node: node$,
+    position: position$,
+  }).pipe(
+    distinctUntilChanged(
+      (a, b) => a.node === b.node && a.position === b.position,
+    ),
+  )
+
   return {
+    type: VDOMType.SUSPENSE,
+    get name() {
+      return current?.name
+    },
+    get placed() {
+      return current?.placed ?? false
+    },
     get key() {
       return node.key ?? null
-    },
-    get firstElement() {
-      return current?.firstElement ?? null
     },
     get lastElement() {
       return current?.lastElement ?? null
     },
 
     mount() {
+      const subscription = new Subscription()
+      subscription.add(
+        source$
+          .pipe(
+            distinctUntilChanged(
+              (a, b) => a.node === b.node && a.position === b.position,
+            ),
+          )
+          .subscribe(({ node, position }) => {
+            if (node === current) return
+            current?.remove()
+            current = null
+            if (node) {
+              current = node
+              current.placeIn(position)
+            }
+          }),
+      )
       fallback = createNode(renderer, node.id, node.fallback, instance)
       children = createNode(
         renderer,
@@ -963,8 +982,6 @@ function createSuspenseNode(renderer, node, instance) {
         node.children,
         downstream(context),
       )
-      current = fallback
-      const subscription = new Subscription()
       subscription.add(fallback.mount())
       subscription.add(children.mount())
       subscription.add(() => {
@@ -973,22 +990,18 @@ function createSuspenseNode(renderer, node, instance) {
         children = null
       })
       subscription.add(
-        context.suspended$
-          .pipe(distinctUntilChanged(), debounceTime(10))
-          .subscribe(suspended => {
-            assert(
-              fallback,
-              "suspense node's fallback VDOM must not be null on suspend event",
-            )
-            assert(
-              children,
-              "suspense node's children VDOM must not be null on suspend event",
-            )
-            if (current) current.remove()
-            if (suspended) current = fallback
-            else current = children
-            if (currentPosition) current.placeIn(currentPosition)
-          }),
+        context.suspended$.pipe(distinctUntilChanged()).subscribe(suspended => {
+          assert(
+            fallback,
+            "suspense node's fallback VDOM must not be null on suspend event",
+          )
+          assert(
+            children,
+            "suspense node's children VDOM must not be null on suspend event",
+          )
+          const next = suspended ? fallback : children
+          node$.next(next)
+        }),
       )
       return subscription
     },
@@ -1005,16 +1018,10 @@ function createSuspenseNode(renderer, node, instance) {
       children.update(nextNode.children)
     },
     placeIn(position) {
-      assert(
-        current,
-        "suspense current vdom node must not be null when updating",
-      )
-      currentPosition = position
-      current.placeIn(position)
+      position$.next(position)
     },
     remove() {
-      assert(current, "current vdom node must not be null")
-      current.remove()
+      node$.next(null)
     },
   }
 

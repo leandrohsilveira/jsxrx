@@ -1,9 +1,9 @@
 /**
  * @import { Operator } from "rxjs"
- * @import { IState, IDeferred as IDeferred, CombineOutput, Properties, ComponentInstance, InputTake, Ref } from "./jsx"
+ * @import { IState, IDeferred as IDeferred, CombineOutput, Properties, ComponentInstance, InputTake, Ref, AsyncState, PendingState } from "./jsx"
  */
 
-import { shallowEqual } from "@jsxrx/utils"
+import { assert, shallowEqual } from "@jsxrx/utils"
 import {
   BehaviorSubject,
   combineLatest,
@@ -16,6 +16,7 @@ import {
   Observable,
   of,
   share,
+  startWith,
   switchMap,
   tap,
 } from "rxjs"
@@ -81,6 +82,19 @@ class ObservableDelegate extends Observable {
  */
 export class Input extends ObservableDelegate {
   /**
+   * @template T
+   * @param {Observable<T>} input$
+   * @returns {Input<T>}
+   */
+  static from(input$) {
+    assert(
+      input$ instanceof Input,
+      "Input.from() argument must be the component's function first parameter, an observable instance of Input class",
+    )
+    return input$
+  }
+
+  /**
    * @param {Observable<Properties<T>>} props$
    * @param {ComponentInstance} instance
    */
@@ -110,7 +124,7 @@ export class Input extends ObservableDelegate {
   #props$
 
   /**
-   * @template {Partial<T>} [D=T]
+   * @template [D=T]
    * @param {D} [defaultProps]
    * @returns {InputTake<T & D>}
    */
@@ -119,7 +133,7 @@ export class Input extends ObservableDelegate {
   }
 
   /**
-   * @template {Partial<T>} [D=T]
+   * @template [D=T]
    * @param {D} [defaultProps]
    * @returns {Observable<InputTake<T & D>>}
    */
@@ -133,7 +147,7 @@ export class Input extends ObservableDelegate {
   }
 
   /**
-   * @template {Partial<T>} [D=T]
+   * @template [D=T]
    * @param {(string | symbol)[] | null} keys
    * @param {D} [defaultProps]
    * @returns {InputTake<T & D>}
@@ -167,8 +181,17 @@ export class Input extends ObservableDelegate {
           ),
         )
       },
-      getOwnPropertyDescriptor(target, p) {
-        console.log("getOwnPropertyDescriptor", p)
+      getOwnPropertyDescriptor(_, p) {
+        if (!keys)
+          throw new Error(
+            "take() object does not support spreading, use spread() instead",
+          )
+        if (keys.indexOf(p) < 0)
+          return {
+            writable: false,
+            enumerable: false,
+            configurable: false,
+          }
         return {
           writable: false,
           enumerable: true,
@@ -289,11 +312,17 @@ export function combine(data) {
 }
 
 /**
- * @param {Observable<unknown>} value
+ * @param {Observable<unknown> | AsyncState<unknown>} value
  * @param {number} [debounce=5]
  * @returns {Observable<boolean>}
  */
 export function pending(value, debounce = 5) {
+  if (isAsyncState(value)) {
+    return value.state$.pipe(
+      map(val => val.state === "pending"),
+      distinctUntilChanged(),
+    )
+  }
   if (isObservableDelegate(value)) {
     const pending$ = new BehaviorSubject(true)
     const observed = value.source.pipe(tap(() => pending$.next(true)))
@@ -314,6 +343,57 @@ export function pending(value, debounce = 5) {
       distinctUntilChanged(),
     )
   }
+  return value.pipe(
+    map(value => {
+      if (isPendingState(value)) return value.state === "pending"
+      return false
+    }),
+    debounceTime(1),
+    startWith(false),
+    distinctUntilChanged(),
+  )
+}
 
-  return of(false)
+/**
+ * @template T
+ * @param {Observable<PendingState<T>>} state$
+ */
+export function asyncValue(state$) {
+  return state$.pipe(
+    filter(result => result.state === "success"),
+    map(result => result.value),
+  )
+}
+
+/**
+ * @template [T=unknown]
+ * @param {unknown} value
+ * @returns {value is AsyncState<T>}
+ */
+export function isAsyncState(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "kind" in value &&
+    value.kind === "async" &&
+    "state$" in value &&
+    isObservable(value.state$)
+  )
+}
+
+/**
+ * @template [T=unknown]
+ * @param {unknown} value
+ * @returns {value is PendingState<T>}
+ */
+function isPendingState(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "state" in value &&
+    typeof value.state === "string" &&
+    /^idle|pending|success|error$/.test(value.state) &&
+    "value" in value &&
+    "error" in value
+  )
 }

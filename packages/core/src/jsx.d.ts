@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { Observable } from "rxjs"
+import type { Observable, Subscription } from "rxjs"
 import type { VDOMType } from "./constants/vdom.js"
 
 export interface Obj {}
@@ -23,12 +23,43 @@ export interface IDeferred<T> {
 }
 
 export interface IContext<T> {
+  initialValue: T
   create(): BehaviorSubject<T>
 }
 
-export type ILoading<T> =
-  | { isLoading: true; value: null }
-  | { isLoading: false; value: T }
+type Fn = (...args: any) => any
+
+type AsyncFn<F extends Fn> = (
+  ...args: Parameters<F>
+) => ReturnType<F> extends Promise<infer V>
+  ? Promise<V>
+  : Promise<ReturnType<F>>
+
+export interface Emitter<T extends Fn> {
+  emit: AsyncFn<T>
+}
+
+export interface OptionalEmitter<T extends Fn> {
+  emit: AsyncFn<
+    (
+      ...args: Parameters<T>
+    ) => ReturnType<T> extends Promise<infer V>
+      ? V | undefined
+      : ReturnType<T> | undefined
+  >
+}
+
+export interface AsyncState<T, E = unknown> {
+  kind: "async"
+  state$: Observable<PendingState<T>>
+  value$: Observable<T>
+  error$: Observable<E>
+}
+
+export type PendingState<T> =
+  | { state: "idle" | "pending"; value: null; error: null }
+  | { state: "success"; value: T; error: null }
+  | { state: "error"; value: null; error: unknown }
 
 export type SuspensionController = {
   suspend(): void
@@ -45,7 +76,7 @@ export type SuspensionContext = {
 
 export interface IContextMap {
   set<T>(context: IContext<T>, value$: Observable<T>): void
-  require<T>(context: Context<T>): Observable<T>
+  require<T extends IContext<any>>(context: T): Observable<T["initialValue"]>
   optional(context: Context<T>): Observable<T>
 }
 
@@ -147,7 +178,13 @@ export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
     node: TextNode | ElementNode,
     position: ElementPosition<TextNode, ElementNode>,
   ): void
+  move(
+    node: TextNode | ElementNode,
+    position: ElementPosition<TextNode, ElementNode>,
+  )
   remove(node: TextNode | ElementNode, target: ElementNode): void
+  getParent(node: TextNode | ElementNode): ElementNode | null
+  subscribe(): Subscription
 }
 
 export type ElementNode =

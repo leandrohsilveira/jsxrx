@@ -1,10 +1,12 @@
 import { Observable, Subscription } from "rxjs"
 import { ElementNode, ElementPosition, IRenderComponentNode } from "../jsx"
-import { IVRenderEventType } from "../constants/types"
+import { IVDOMType, IVRenderEventType } from "../constants/types"
 
 export interface VNode<T, E, N extends ElementNode = ElementNode> {
+  type: IVDOMType
+  placed: boolean
+  name?: string
   key: string | number | null
-  firstElement: T | E | null
   lastElement: T | E | null
   mount(): Subscription
   update(next: N): void
