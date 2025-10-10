@@ -1,3 +1,4 @@
+import { AsyncState, PendingState } from "@jsxrx/core"
 import { Observable } from "rxjs"
 
 export type ParamsMap = Record<string, unknown>
@@ -25,31 +26,31 @@ export interface HttpResponseParams<T = unknown> {
   status: number
 }
 
-export interface HttpEndpointParams<Input, Req, Res, Output>
-  extends HttpRequestParams {
+export type HttpEndpointParams<Input, Req, Res, Output> = HttpRequestParams & {
   path: string
   method?: HttpMethod
-  requestBodyParser: RequestBodyParser<Req>
   responseBodyParser: ResponseBodyParser<Res>
-  requestSetup(params: Input): HttpRequestParams<Req>
   responseSetup(output: HttpResponseParams<Res>): Output
-}
+} & (
+    | {
+        requestBodyParser?: undefined
+        requestSetup?(params: Input): HttpRequestParams
+      }
+    | {
+        requestBodyParser: RequestBodyParser<Req>
+        requestSetup(params: Input): HttpRequestParams<Req>
+      }
+  )
 
-export type HttpResult<T, E = unknown> =
-  | { state: "idle" | "pending"; value: null; error: null }
-  | { state: "success"; value: T; error: null }
-  | { state: "error"; value: null; error: E }
-
-export interface Mutation<I, O> {
-  state$: Observable<HttpResult<O>>
-  mutate(value: I): Promise<O>
+export interface Action<I, O> extends AsyncState<O> {
+  perform(value: I): Promise<O>
   reset(): void
 }
 
 export interface HttpEndpoint<I, O> {
   send: RequestFn<I, O>
-  fetch(input: Observable<I>): Observable<HttpResult<O>>
-  mutation(): Mutation<I, O>
+  fetch(input: Observable<I>): Observable<PendingState<O>>
+  action(): Action<I, O>
 }
 
 export interface HttpClientParams {
@@ -77,6 +78,7 @@ export interface HttpClient {
 export type RequestBodyParser<T = unknown> = (
   body: T,
 ) => HttpRequestParams<BodyInit | null>
-export type ResponseBodyParser<T = unknown> = (
-  response: Response,
-) => Promise<HttpResponseParams<T>>
+export type ResponseBodyParser<T = unknown> = {
+  accepts: string[]
+  parse(response: Response): Promise<HttpResponseParams<T>>
+}

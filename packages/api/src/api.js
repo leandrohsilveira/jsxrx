@@ -1,18 +1,20 @@
 /**
  * @import { Observable } from "rxjs"
- * @import { HttpClient, HttpClientParams, HttpEndpoint, HttpEndpointParams, HttpResult, ParamsMap, RequestFn } from "./types.js"
+ * @import { HttpClient, HttpClientParams, HttpEndpoint, HttpEndpointParams, ParamsMap, RequestFn } from "./types.js"
+ * @import { PendingState } from "@jsxrx/core"
  */
 
+import { state } from "@jsxrx/core"
 import { asArray, shallowEqual } from "@jsxrx/utils"
 import {
-  BehaviorSubject,
   catchError,
   debounceTime,
   distinctUntilChanged,
+  filter,
   from,
   map,
   of,
-  share,
+  shareReplay,
   startWith,
   switchMap,
 } from "rxjs"
@@ -45,28 +47,29 @@ export function createHttpClient({ baseUrl, defaultHeaders = {} }) {
     }) {
       const send = /** @type {RequestFn<Input, Output>} */ (
         async input => {
-          const setupResult = requestSetup(input)
-          const parsedRequestParams = requestBodyParser(
+          const setupResult = requestSetup?.(input)
+          const parsedRequestParams = requestBodyParser?.(
             /** @type {*} */ (setupResult?.body ?? body ?? null),
           )
 
           const mergedParams = {
             ...params,
-            ...parsedRequestParams.params,
-            ...setupResult.params,
+            ...parsedRequestParams?.params,
+            ...setupResult?.params,
           }
 
           const mergedSearch = {
             ...search,
-            ...parsedRequestParams.search,
-            ...setupResult.search,
+            ...parsedRequestParams?.search,
+            ...setupResult?.search,
           }
 
           const mergedHeaders = {
             ...defaultHeaders,
             ...headers,
-            ...parsedRequestParams.headers,
-            ...setupResult.headers,
+            Accept: responseBodyParser.accepts.join(","),
+            ...parsedRequestParams?.headers,
+            ...setupResult?.headers,
           }
 
           const resolvedPath = Object.entries(mergedParams).reduce(
@@ -80,11 +83,11 @@ export function createHttpClient({ baseUrl, defaultHeaders = {} }) {
             {
               method,
               headers: toHeaders(mergedHeaders),
-              body: parsedRequestParams.body,
+              body: parsedRequestParams?.body,
             },
           )
 
-          const result = await responseBodyParser(response)
+          const result = await responseBodyParser.parse(response)
 
           return responseSetup(result)
         }
@@ -98,7 +101,7 @@ export function createHttpClient({ baseUrl, defaultHeaders = {} }) {
             distinctUntilChanged(shallowEqual),
             switchMap(
               input =>
-                /** @type {Observable<HttpResult<Output>>} */ (
+                /** @type {Observable<PendingState<Output>>} */ (
                   from(send(input)).pipe(
                     map(value => ({ state: "success", value, error: null })),
                     startWith({ state: "pending", value: null, error: null }),
@@ -108,33 +111,41 @@ export function createHttpClient({ baseUrl, defaultHeaders = {} }) {
                   )
                 ),
             ),
-            share(),
+            shareReplay(),
           )
         },
-        mutation() {
-          const state$ = new BehaviorSubject(
-            /** @type {HttpResult<Output>} */ ({
+        action() {
+          const state$ = state(
+            /** @type {PendingState<Output>} */ ({
               state: "idle",
               value: null,
               error: null,
             }),
           )
           return {
-            state$: state$.pipe(
+            kind: "async",
+            state$: state$.pipe(debounceTime(1)),
+            value$: state$.pipe(
               debounceTime(1),
-              distinctUntilChanged(shallowEqual),
+              filter(state => state.state === "success"),
+              map(state => state.value),
+            ),
+            error$: state$.pipe(
+              debounceTime(1),
+              filter(state => state.state === "error"),
+              map(state => state.error),
             ),
             reset() {
-              state$.next({ state: "idle", value: null, error: null })
+              state$.set({ state: "idle", value: null, error: null })
             },
-            async mutate(input) {
+            async perform(input) {
               try {
-                state$.next({ state: "pending", value: null, error: null })
+                state$.set({ state: "pending", value: null, error: null })
                 const value = /** @type {Output} */ (await send(input))
-                state$.next({ state: "success", value, error: null })
+                state$.set({ state: "success", value, error: null })
                 return value
               } catch (error) {
-                state$.next({ state: "error", value: null, error })
+                state$.set({ state: "error", value: null, error })
                 throw error
               }
             },
