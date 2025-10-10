@@ -13,6 +13,7 @@
   "description": "",
   "dependencies": {
     "@jsxrx/utils": "*",
+    "clsx": "^2.1.1",
     "rxjs": "^7.8.2"
   },
   "exports": {
