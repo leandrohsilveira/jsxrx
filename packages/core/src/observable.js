@@ -177,7 +177,7 @@ export class Input extends ObservableDelegate {
             debounceTime(1),
             switchMap(props => {
               const value = /** @type {*} */ (props[name])
-              if (value instanceof ElementRef) return of(value)
+              if (isRef(value)) return of(value)
               if (isObservable(value))
                 return value.pipe(map(value => value ?? defValue))
               return of(value ?? defValue)
@@ -256,16 +256,15 @@ export class State extends ObservableDelegate {
 
 /**
  * @template T
- * @extends {State<T | null>}
  * @implements {Ref<T>}
  */
-export class ElementRef extends State {
+export class ElementRef {
   /**
    * @param {new () => T} _
    */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(_) {
-    super(new BehaviorSubject(/** @type {T | null} */ (null)))
+    this.current = new BehaviorSubject(/** @type {T | null} */ (null))
   }
 
   /** @type {"ref"} */
@@ -377,6 +376,15 @@ export function asyncValue(state$) {
     filter(result => result.state === "success"),
     map(result => result.value),
   )
+}
+
+/**
+ * @template T
+ * @param {unknown} value
+ * @returns {value is Ref<T>}
+ */
+export function isRef(value) {
+  return value instanceof ElementRef
 }
 
 /**

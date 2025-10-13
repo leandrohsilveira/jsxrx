@@ -1,6 +1,6 @@
 /**
  * @import { Observable } from "rxjs"
- * @import { ComponentInstance, ElementNode, ElementPosition, IRenderComponentNode, IRenderElementNode, IRenderer, IRenderFragmentNode, IRenderSuspenseNode, IRenderText, SuspensionContext, SuspensionController } from "../jsx.js"
+ * @import { ComponentInstance, ElementNode, ElementPosition, IRenderComponentNode, IRenderElementNode, IRenderer, IRenderFragmentNode, IRenderSuspenseNode, IRenderText, Ref, SuspensionContext, SuspensionController } from "../jsx.js"
  * @import { VChildren, VNode, VNodeComponent, VNodeObservable, VNodeWithChildren, VRoot } from "./types.js"
  */
 
@@ -20,14 +20,9 @@ import {
 } from "rxjs"
 import { VDOMType } from "../constants/vdom.js"
 import { ContextMap } from "../context.js"
-import {
-  ElementRef,
-  Input,
-  isObservableDelegate,
-  pending,
-} from "../observable.js"
-import { isRenderNode } from "./render.js"
+import { Input, isObservableDelegate, isRef, pending } from "../observable.js"
 import { findPreviousLastElement } from "../renderer/positioning.js"
+import { isRenderNode } from "./render.js"
 
 /**
  * @template T
@@ -232,8 +227,9 @@ function createElementNode(renderer, node, instance) {
   let element = null
   /** @type {ElementPosition<T, E> | null} */
   let currentPosition = null
-  /** @type {{ events: Record<string, Subscription>, props: Record<string, Subscription>, suspensions: Record<string, Subscription>, children: Subscription | null }} */
+  /** @type {{ events: Record<string, Subscription>, props: Record<string, Subscription>, suspensions: Record<string, Subscription>, ref: Subscription | null, children: Subscription | null }} */
   let subscriptions = {
+    ref: null,
     children: null,
     events: {},
     props: {},
@@ -251,6 +247,9 @@ function createElementNode(renderer, node, instance) {
 
   /** @type {Record<string, SuspensionController>} */
   let propsSuspensions = {}
+
+  /** @type {Ref<T> | null} */
+  let ref = null
 
   return {
     type: VDOMType.ELEMENT,
@@ -284,7 +283,9 @@ function createElementNode(renderer, node, instance) {
         remove()
         children = null
         element = null
+        ref?.current.next(null)
         subscriptions.children?.unsubscribe()
+        subscriptions.ref?.unsubscribe()
         Array.of(
           ...Object.values(subscriptions.events),
           ...Object.values(subscriptions.props),
@@ -318,25 +319,24 @@ function createElementNode(renderer, node, instance) {
     for (const name of props) {
       const value = next?.[name] ?? null
       if (name === "ref") {
-        if (value instanceof ElementRef) {
-          observables[name].complete()
-          subscriptions.props[name]?.unsubscribe()
-          delete subscriptions.props[name]
-          delete observables[name]
-          value.set(element)
+        if (isRef(value)) {
+          ref?.current.complete()
+          subscriptions.ref?.unsubscribe()
+          subscriptions.ref = null
+          ref = value
+          value.current.next(element)
         } else if (isObservable(value)) {
-          observables[name] ??= new BehaviorSubject(value)
-          if (subscriptions.props[name]) {
-            observables[name].next(value)
-          }
-          subscriptions.props[name] ??= observables[name]
-            .pipe(switchMap(source => source))
-            .subscribe(value => {
-              assert(element, "element should not be null when setting ref")
-              if (value instanceof ElementRef) value.set(element)
-            })
+          ref?.current.complete()
+          subscriptions.ref?.unsubscribe()
+          subscriptions.ref = value.subscribe(value => {
+            assert(
+              isRef(value),
+              "element ref prop must be instance of Ref or its observable must emit refs",
+            )
+            ref = value
+            value.current.next(element)
+          })
         }
-
         continue
       }
       if (isObservableDelegate(value)) {

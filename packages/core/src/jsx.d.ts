@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { Observable, Subscription } from "rxjs"
+import type { Observable, SubjectLike, Subscription } from "rxjs"
 import type { VDOMType } from "./constants/vdom.js"
 
 export interface Obj {}
@@ -13,8 +13,9 @@ export interface IState<T> extends Observable<T> {
   set(value: T): void
 }
 
-export interface Ref<T> extends IState<T | null> {
+export interface Ref<T> {
   kind: "ref"
+  current: SubjectLike<T | null>
 }
 
 export interface IDeferred<T> {
@@ -89,12 +90,12 @@ export type CombineOutput<T> = {
 }
 
 export type Properties<T> = {
-  [K in keyof T]: T[K] extends Ref<infer V> ? Ref<V> : T[K] | Observable<T[K]>
+  [K in keyof T]: T[K] extends Ref<any> ? T[K] : T[K] | Observable<T[K]>
 }
 
 export type InputTake<P> = {
   [K in keyof P]-?: P[K] extends Ref<infer V>
-    ? Observable<Ref<V>>
+    ? Ref<V>
     : P[K] extends Observable<infer V>
       ? Observable<V>
       : Observable<P[K]>
