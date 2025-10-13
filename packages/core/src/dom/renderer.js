@@ -39,7 +39,14 @@ export class DOMRenderer {
    */
   setProperty(element, name, value) {
     const el = /** @type {*} */ (element)
-    el[name] = value
+    switch (name) {
+      case "style":
+        assignStyles(el, value)
+        break
+      default:
+        el[name] = value
+        break
+    }
   }
 
   /**
@@ -112,4 +119,21 @@ export class DOMRenderer {
   subscribe() {
     return new Subscription()
   }
+}
+
+/**
+ * @param {*} el
+ * @param {*} styles
+ */
+function assignStyles(el, styles) {
+  if (typeof styles === "string") return (el.style = styles)
+  return Object.assign(
+    el.style,
+    Object.fromEntries(
+      Object.entries(styles).map(([prop, value]) => [
+        prop,
+        typeof value === "number" ? `${value}px` : String(value),
+      ]),
+    ),
+  )
 }
