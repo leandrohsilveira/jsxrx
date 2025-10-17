@@ -83,10 +83,12 @@ export class BatchRenderer {
   }
 
   /**
-   * @param {T | E} node
+   * @param {E} parent
+   * @param {T | E} child
+   * @returns {boolean}
    */
-  getParent(node) {
-    return this.#renderer.getParent(node)
+  hasChild(parent, child) {
+    return this.#renderer.hasChild(parent, child)
   }
 
   /**
@@ -142,42 +144,48 @@ export class BatchRenderer {
       )
       .subscribe(events => {
         this.#logger?.beginBatch(events)
-        /** @type {Set<T | E>} */
-        const toPlace = new Set()
-        /** @type {Set<T | E>} */
-        const toRemove = new Set()
+        /** @type {Map<T | E, VRenderEvent<T, E>>} */
+        const toRemoveMap = new Map()
+        /** @type {Map<T | E, VRenderEvent<T, E>>} */
+        const toPlaceMap = new Map()
         for (const event of events) {
           switch (event.event) {
             case VRenderEventType.PLACE:
-              toPlace.add(event.payload)
+              if (toRemoveMap.has(event.payload)) {
+                toRemoveMap.delete(event.payload)
+                continue
+              }
+              toPlaceMap.set(event.payload, event)
               break
             case VRenderEventType.REMOVE:
-              toRemove.add(event.payload)
+              if (toPlaceMap.has(event.payload)) {
+                toPlaceMap.delete(event.payload)
+                continue
+              }
+              toRemoveMap.set(event.payload, event)
               break
             default:
+              // TODO: implement moving
               break
           }
         }
 
-        for (const event of events) {
-          switch (event.event) {
-            case VRenderEventType.PLACE:
-              if (toRemove.has(event.payload)) break
-              this.#logger?.placeEvent(event)
-              this.#renderer.place(event.payload, event.position)
-              break
-            case VRenderEventType.MOVE:
-              this.#logger?.moveEvent(event)
-              this.#renderer.move(event.payload, event.position)
-              break
-            case VRenderEventType.REMOVE:
-              if (toPlace.has(event.payload)) break
-              this.#logger?.removeEvent(event)
-              this.#renderer.remove(event.payload, event.position.parent)
-              break
-          }
+        /** @type {VRenderEvent<T, E>[]} */
+        const processed = []
+
+        for (const event of toRemoveMap.values()) {
+          this.#renderer.remove(event.payload, event.position.parent)
+          this.#logger?.removeEvent(event)
+          processed.push(event)
         }
-        this.#logger?.completeBatch(events)
+
+        for (const event of toPlaceMap.values()) {
+          this.#renderer.place(event.payload, event.position)
+          this.#logger?.placeEvent(event)
+          processed.push(event)
+        }
+
+        this.#logger?.completeBatch(processed)
       })
   }
 }

@@ -9,13 +9,20 @@
  * @param {ElementPosition<T, E>} position
  */
 export function findPreviousLastElement(renderer, position) {
-  let previous = position.lastElement
+  let lastElement = position.lastElement
   while (
-    (previous === undefined ||
-      renderer.getParent(previous) !== position.parent) &&
-    position.previous
+    position.previous &&
+    (!lastElement || !renderer.hasChild(position.parent, lastElement))
   ) {
     position = position.previous
   }
-  return position
+  return {
+    ...position,
+    get lastElement() {
+      const lastElement = position.lastElement
+      if (!lastElement || !renderer.hasChild(position.parent, lastElement))
+        return undefined
+      return lastElement
+    },
+  }
 }

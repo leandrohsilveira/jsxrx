@@ -45,11 +45,9 @@ export class Logger {
    */
   placeEvent(event) {
     if (!this.#events.has("placeEvent")) return
-    this.#logger.debug(
-      "[BATCH] Render Events: Placing",
-      event.payload,
-      event.position,
-    )
+    this.#logger.debug("[BATCH] Render Events: Placing", event.payload, {
+      ...event.position,
+    })
   }
 
   /**
@@ -57,11 +55,9 @@ export class Logger {
    */
   moveEvent(event) {
     if (!this.#events.has("moveEvent")) return
-    this.#logger.debug(
-      "[BATCH] Render Events: Moving",
-      event.payload,
-      event.position,
-    )
+    this.#logger.debug("[BATCH] Render Events: Moving", event.payload, {
+      ...event.position,
+    })
   }
 
   /**
@@ -69,10 +65,8 @@ export class Logger {
    */
   removeEvent(event) {
     if (!this.#events.has("removeEvent")) return
-    this.#logger.debug(
-      "[BATCH] Render Events: Removing",
-      event.payload,
-      event.position,
-    )
+    this.#logger.debug("[BATCH] Render Events: Removing", event.payload, {
+      ...event.position,
+    })
   }
 }

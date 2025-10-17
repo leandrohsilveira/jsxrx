@@ -329,6 +329,10 @@ function createElementNode(renderer, node, instance) {
           ref?.current.complete()
           subscriptions.ref?.unsubscribe()
           subscriptions.ref = value.subscribe(value => {
+            if (!value) {
+              ref = null
+              return
+            }
             assert(
               isRef(value),
               "element ref prop must be instance of Ref or its observable must emit refs",
@@ -701,12 +705,16 @@ function createObservableNode(renderer, parentId, input$, instance) {
   const latest$ = new Subject()
   /** @type {Subject<ElementPosition<T, E>>} */
   const position$ = new Subject()
+  /** @type {Subject<'place' | 'remove'>} */
+  const action$ = new Subject()
   const placement$ = combineLatest({
     node: latest$,
     position: position$,
+    action: action$,
   }).pipe(
     distinctUntilChanged(
-      (a, b) => a.node === b.node && a.position === b.position,
+      (a, b) =>
+        a.node === b.node && a.position === b.position && a.action === b.action,
     ),
   )
 
@@ -732,11 +740,18 @@ function createObservableNode(renderer, parentId, input$, instance) {
     mount() {
       const subscription = new Subscription()
       subscription.add(
-        placement$.subscribe(({ node, position }) => {
-          if (node === latest) return
-          latest?.remove()
-          node?.placeIn(position)
-          latest = node
+        placement$.subscribe(({ node, position, action }) => {
+          if (action === "place") {
+            if (placed && node === latest) return
+            latest?.remove()
+            node?.placeIn(position)
+            latest = node
+            placed = true
+            return
+          }
+          if (!placed) return
+          node?.remove()
+          placed = false
         }),
       )
       subscription.add(
@@ -785,12 +800,11 @@ function createObservableNode(renderer, parentId, input$, instance) {
       subject$.next(next)
     },
     placeIn(position) {
+      action$.next("place")
       position$.next(position)
     },
     remove() {
-      if (!placed) return
-      latest?.remove()
-      placed = false
+      action$.next("remove")
     },
   }
 

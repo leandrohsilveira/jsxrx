@@ -111,7 +111,7 @@ export function createHttpClient({ baseUrl, defaultHeaders = {} }) {
                   )
                 ),
             ),
-            shareReplay(),
+            shareReplay({ bufferSize: 1, refCount: true }),
           )
         },
         action() {
@@ -125,6 +125,11 @@ export function createHttpClient({ baseUrl, defaultHeaders = {} }) {
           return {
             kind: "async",
             state$: state$.pipe(debounceTime(1)),
+            pending$: state$.pipe(
+              debounceTime(1),
+              map(state => state.state === "pending"),
+              distinctUntilChanged(),
+            ),
             value$: state$.pipe(
               debounceTime(1),
               filter(state => state.state === "success"),

@@ -52,6 +52,7 @@ export interface OptionalEmitter<T extends Fn> {
 
 export interface AsyncState<T, E = unknown> {
   kind: "async"
+  pending$: Observable<boolean>
   state$: Observable<PendingState<T>>
   value$: Observable<T>
   error$: Observable<E>
@@ -103,6 +104,18 @@ export type InputTake<P> = {
 
 export type PropsWithChildren<T = {}> = T & {
   children?: ElementNode
+}
+
+export type WithClassName = {
+  className?: string
+}
+
+export type WithChildren = {
+  children?: ElementNode
+}
+
+export type WithKey = {
+  key?: JsxRx.Key | null
 }
 
 export type PropsWithKey<T = {}> = T & {
@@ -186,7 +199,7 @@ export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
     position: ElementPosition<TextNode, ElementNode>,
   )
   remove(node: TextNode | ElementNode, target: ElementNode): void
-  getParent(node: TextNode | ElementNode): ElementNode | null
+  hasChild(parent: ElementNode, child: TextNode | ElementNode): boolean
   subscribe(): Subscription
 }
 

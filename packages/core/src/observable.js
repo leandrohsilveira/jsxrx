@@ -16,6 +16,7 @@ import {
   Observable,
   of,
   share,
+  shareReplay,
   startWith,
   Subscription,
   switchMap,
@@ -27,7 +28,7 @@ import { compareProps, isRenderNode } from "./vdom"
  * @template T
  * @extends {Observable<T>}
  */
-class ObservableDelegate extends Observable {
+export class ObservableDelegate extends Observable {
   /**
    * @param {Observable<T>} observable
    * @param {Observable<unknown>} [source]
@@ -66,6 +67,7 @@ class ObservableDelegate extends Observable {
       this.#delegate.pipe(
         // @ts-expect-error vararg
         ...operators,
+        shareReplay({ refCount: true, bufferSize: 1 }),
       ),
       this.source,
     )
@@ -331,10 +333,7 @@ export function combine(data) {
  */
 export function pending(value, debounce = 5) {
   if (isAsyncState(value)) {
-    return value.state$.pipe(
-      map(val => val.state === "pending"),
-      distinctUntilChanged(),
-    )
+    return value.pending$
   }
   if (isObservableDelegate(value)) {
     const pending$ = new BehaviorSubject(true)

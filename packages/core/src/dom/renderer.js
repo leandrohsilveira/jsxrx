@@ -109,11 +109,12 @@ export class DOMRenderer {
   }
 
   /**
-   * @param {Text | Element} node
-   * @returns {Element | null}
+   * @param {Element} parent
+   * @param {Text | Element} child
+   * @returns {boolean}
    */
-  getParent(node) {
-    return node.parentElement
+  hasChild(parent, child) {
+    return parent.contains(child)
   }
 
   subscribe() {
