@@ -79,7 +79,6 @@ describe("vdom module", () => {
     })
     expect(renderer.place).toHaveBeenNthCalledWith(2, secondChild, {
       parent: element,
-      previous: { parent: element },
       lastElement: firstChild,
     })
     expect(renderer.place).toHaveBeenNthCalledWith(3, element, { parent: root })
@@ -339,7 +338,6 @@ describe("vdom module", () => {
     })
     expect(renderer.place).toHaveBeenNthCalledWith(2, secondChild, {
       parent: root,
-      previous: { parent: root },
       lastElement: firstChild,
     })
 
@@ -401,7 +399,6 @@ describe("vdom module", () => {
     })
     expect(renderer.place).toHaveBeenNthCalledWith(2, secondChild, {
       parent: root,
-      previous: { parent: root },
       lastElement: firstChild,
     })
 
@@ -505,19 +502,21 @@ describe("vdom module", () => {
     expect(renderer.createElement).toHaveBeenNthCalledWith(1, "main")
     expect(renderer.createElement).toHaveBeenNthCalledWith(2, "div")
     expect(renderer.createElement).toHaveBeenNthCalledWith(3, "div")
+    expect(renderer.createTextNode).toHaveBeenNthCalledWith(1, values[0].value)
+    expect(renderer.createTextNode).toHaveBeenNthCalledWith(2, values[1].value)
     expect(renderer.place).toHaveBeenCalledTimes(5)
     expect(renderer.place).toHaveBeenNthCalledWith(1, firstChildText, {
       parent: firstChild,
     })
-    expect(renderer.place).toHaveBeenNthCalledWith(2, firstChild, {
-      parent: element,
-    })
-    expect(renderer.place).toHaveBeenNthCalledWith(3, secondChildText, {
+    expect(renderer.place).toHaveBeenNthCalledWith(2, secondChildText, {
       parent: secondChild,
     })
+    expect(renderer.place).toHaveBeenNthCalledWith(3, firstChild, {
+      parent: element,
+    })
+
     expect(renderer.place).toHaveBeenNthCalledWith(4, secondChild, {
       parent: element,
-      previous: { parent: element },
       lastElement: firstChild,
     })
     expect(renderer.place).toHaveBeenNthCalledWith(5, element, { parent: root })
