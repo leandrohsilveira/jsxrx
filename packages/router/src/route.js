@@ -13,6 +13,7 @@ export function params(...keys) {
 
 /**
  * @overload
+ * @param {string} id
  * @param {Component<unknown>} component
  * @returns {RouteBasic<unknown>}
  */
@@ -21,6 +22,7 @@ export function params(...keys) {
  * @template {string} Path
  * @template {string} Query
  * @overload
+ * @param {string} id
  * @param {Component<Props>} component
  * @param {RouteOptions<Props, Path, Query>} options
  * @returns {RouteWithProps<Props, Path, Query>}
@@ -29,13 +31,15 @@ export function params(...keys) {
  * @template Props
  * @template {string} Path
  * @template {string} Query
+ * @param {string} id
  * @param {Component<Props> | Component<WithChildren> | Component<unknown>} component
  * @param {RouteOptions<Props, Path, Query> | RouteWithChildrenOptions} [options]
  * @returns {Route<Props, Path, Query>}
  */
-export function route(component, options) {
+export function route(id, component, options) {
   return /** @type {*} */ ({
     ...options,
+    id,
     component,
   })
 }

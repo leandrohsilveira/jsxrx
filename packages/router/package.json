@@ -20,6 +20,10 @@
     ".": {
       "types": "./src/index.d.ts",
       "default": "./src/index.js"
+    },
+    "./browser": {
+      "types": "./src/browser/index.d.ts",
+      "default": "./src/browser/index.js"
     }
   }
 }

@@ -1,5 +1,13 @@
-import { Component, Properties, WithChildren } from "@jsxrx/core"
+import { Component, IContextMap, Properties, WithChildren } from "@jsxrx/core"
 import { Observable } from "rxjs"
+
+export type NavigateOptions = {
+  query?: Record<
+    string,
+    string | number | null | undefined | (string | number | null | undefined)[]
+  >
+}
+export type NavigateFn = (to: string, options?: NavigateOptions) => void
 
 export interface RouteResolverInput<
   Path extends string = string,
@@ -7,6 +15,9 @@ export interface RouteResolverInput<
 > {
   path: Record<Path, Observable<string>>
   query: Record<Query, Observable<string[] | undefined>>
+  context: IContextMap
+  url$: Observable<URL>
+  navigate: NavigateFn
 }
 
 export type RouteWithChildrenOptions = {
@@ -32,6 +43,7 @@ export type Route<
 > = RouteWithProps<Props, Path, Query> | RouteBasic<Props>
 
 export interface RouteBasic<Props> {
+  id: string
   component: Props extends WithChildren
     ? Component<WithChildren>
     : Component<unknown>
@@ -43,7 +55,9 @@ export type RouteWithProps<
   Path extends string,
   Query extends string,
 > = RouteOptions<Props, Path, Query> & {
+  id: string
   component: Component<Props>
+  children?: Props extends WithChildren ? Routes : never
 }
 
 export type Routes =
@@ -53,3 +67,10 @@ export type Routes =
   | {
       index: Route
     }
+
+export interface RouteMatch {
+  url: URL
+  fragments: string[]
+  params: Record<string, string>
+  pattern: string
+}

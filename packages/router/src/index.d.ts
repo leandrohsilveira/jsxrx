@@ -1,2 +1,2 @@
-export * from "./browser.js"
+export * from "./route.js"
 export * from "./types.ts"
