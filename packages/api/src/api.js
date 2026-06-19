@@ -5,7 +5,7 @@
  */
 
 import { state } from "@jsxrx/core"
-import { asArray, shallowEqual } from "@jsxrx/utils"
+import { asArray, shallowComparator } from "@jsxrx/utils"
 import {
   catchError,
   debounceTime,
@@ -98,7 +98,7 @@ export function createHttpClient({ baseUrl, defaultHeaders = {} }) {
         fetch(input$) {
           return input$.pipe(
             debounceTime(1),
-            distinctUntilChanged(shallowEqual),
+            distinctUntilChanged(shallowComparator),
             switchMap(
               input =>
                 /** @type {Observable<PendingState<Output>>} */ (
