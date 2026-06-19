@@ -3,22 +3,25 @@
  */
 
 /**
- * @param {*} a
- * @param {*} b
+ * @template T
+ * @param {T} a
+ * @param {T} b
  * @param {(a: *, b: *) => boolean} [comparator]
  */
-export function shallowEqual(a, b, comparator = (a, b) => a === b) {
+export function shallowComparator(a, b, comparator = (a, b) => a === b) {
   if (a === b) return true
   if (Array.isArray(a) && Array.isArray(b))
     return a.every((item, index) => item === b[index])
   if (Array.isArray(a) || Array.isArray(b)) return false
   if (typeof a !== "object" || typeof b !== "object") return false
+  if (a === null || b === null) return false
   const keysA = Object.keys(a)
   const keysB = Object.keys(b)
 
   if (keysA.length !== keysB.length) return false
 
   for (const key of keysA) {
+    // @ts-expect-error yes typescript, I know their types are any.
     if (!comparator(a[key], b[key])) return false
   }
 

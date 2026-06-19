@@ -3,7 +3,7 @@
  * @import { IState, IDeferred as IDeferred, CombineOutput, Properties, ComponentInstance, InputTake, Ref, AsyncState, PendingState } from "./jsx"
  */
 
-import { assert, shallowEqual } from "@jsxrx/utils"
+import { assert, shallowComparator } from "@jsxrx/utils"
 import {
   BehaviorSubject,
   combineLatest,
@@ -150,7 +150,7 @@ export class Input extends ObservableDelegate {
     return this.#props$.pipe(
       map(props => Object.keys(props)),
       debounceTime(1),
-      distinctUntilChanged(shallowEqual),
+      distinctUntilChanged(shallowComparator),
       map(keys => this.#take(keys, defaultProps)),
     )
   }
@@ -322,7 +322,7 @@ export function combine(data) {
           },
         ),
       ),
-    ).pipe(debounceTime(1), distinctUntilChanged(shallowEqual), share())
+    ).pipe(debounceTime(1), distinctUntilChanged(shallowComparator), share())
   )
 }
 

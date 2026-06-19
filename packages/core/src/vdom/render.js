@@ -3,7 +3,7 @@
  * @import { Component, IRenderComponentNode, IRenderElementNode, IRenderTextNode, Obj, IRenderNode, IRenderFragmentNode, ElementNode, IRenderObservableNode, IRenderSuspenseNode } from "../jsx"
  */
 
-import { asArray, shallowEqual } from "@jsxrx/utils"
+import { asArray, shallowComparator } from "@jsxrx/utils"
 import { VDOMType } from "../constants/vdom.js"
 
 /**
@@ -62,12 +62,12 @@ export function _fragment(id, children, key) {
 
 /**
  * @param {string} id
- * @param {{ fallback: ElementNode }} props
+ * @param {{ fallback: ElementNode, tolerance?: number }} props
  * @param {ElementNode} children
  * @param {*} key
  */
-export function _suspense(id, { fallback }, children, key) {
-  return new RenderSuspenseNode(id, fallback, children, key)
+export function _suspense(id, { fallback, tolerance = 1 }, children, key) {
+  return new RenderSuspenseNode(id, fallback, children, key, tolerance)
 }
 
 /**
@@ -113,8 +113,8 @@ export class RenderElementNode {
     if (node === null || node === undefined) return false
     if (node.id !== this.id) return false
     if (node.type !== VDOMType.ELEMENT) return false
-    if (!shallowEqual(node.props, this.props)) return false
-    return shallowEqual(node.children, this.children, compareRenderNode)
+    if (!shallowComparator(node.props, this.props)) return false
+    return shallowComparator(node.children, this.children, compareRenderNode)
   }
 }
 
@@ -175,7 +175,7 @@ export class RenderFragmentNode {
     if (node === null || node === undefined) return false
     if (node.id !== this.id) return false
     if (node.type !== VDOMType.FRAGMENT) return false
-    return shallowEqual(node.children, this.children, compareRenderNode)
+    return shallowComparator(node.children, this.children, compareRenderNode)
   }
 }
 
@@ -189,12 +189,14 @@ export class RenderSuspenseNode {
    * @param {ElementNode} fallback
    * @param {ElementNode} children
    * @param {*} key
+   * @param {number} tolerance
    */
-  constructor(id, fallback, children, key) {
+  constructor(id, fallback, children, key, tolerance) {
     this.id = id
     this.fallback = fallback
     this.children = children
     this.key = key
+    this.tolerance = tolerance
   }
 
   type = VDOMType.SUSPENSE
@@ -206,9 +208,9 @@ export class RenderSuspenseNode {
     if (node === null || node === undefined) return false
     if (node.id !== this.id) return false
     if (node.type !== VDOMType.SUSPENSE) return false
-    if (!shallowEqual(node.fallback, this.fallback, compareRenderNode))
+    if (!shallowComparator(node.fallback, this.fallback, compareRenderNode))
       return false
-    return shallowEqual(node.children, this.children, compareRenderNode)
+    return shallowComparator(node.children, this.children, compareRenderNode)
   }
 }
 
@@ -218,7 +220,7 @@ export class RenderSuspenseNode {
  * @param {T} b
  */
 export function compareProps(a, b) {
-  return shallowEqual(a, b, (a, b) => {
+  return shallowComparator(a, b, (a, b) => {
     if (a === b) return true
     if (isRenderNode(a) && isRenderNode(b)) return compareRenderNode(a, b)
     if (Array.isArray(a) && Array.isArray(b)) {

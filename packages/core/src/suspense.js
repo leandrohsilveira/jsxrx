@@ -4,7 +4,7 @@
  */
 
 /**
- * @param {Observable<PropsWithChildren<{ fallback: ElementNode }>>} _
+ * @param {Observable<PropsWithChildren<{ fallback: ElementNode, tolerance?: number }>>} _
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function Suspense(_) {

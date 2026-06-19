@@ -1,14 +1,13 @@
 /**
- * @import { Observable } from "rxjs"
  * @import { IState, IDeferred, InputTake, Ref, Emitter, OptionalEmitter } from "./jsx"
  */
 
 import { assert } from "@jsxrx/utils"
 import {
   BehaviorSubject,
-  identity,
   isObservable,
   of,
+  Observable,
   switchMap,
   take,
 } from "rxjs"
@@ -80,14 +79,25 @@ export function fromRef(value) {
     return value.pipe(
       switchMap(value => {
         if (/** @type {typeof isRef<T>} */ (isRef)(value))
-          return value.current.asObservable()
+          return fromSubscribable(value.current)
         return of(value)
       }),
     )
   }
   if (/** @type {typeof isRef<T>} */ (isRef)(value))
-    return value.current.asObservable()
+    return fromSubscribable(value.current)
   return of(value)
+}
+
+/**
+ * @template T
+ * @param {import("rxjs").Subscribable<T>} subscribable
+ * @returns {Observable<T>}
+ */
+function fromSubscribable(subscribable) {
+  return new Observable(subscriber => {
+    return subscribable.subscribe(subscriber)
+  })
 }
 
 /**

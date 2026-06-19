@@ -640,11 +640,7 @@ function createChildrenNode(
         const child = children[index]
         const id = genId(parentId, child, defaultKey, index)
         const node = nodes[id]
-        assert(
-          node,
-          `there must exist a VDOM node to the children node with id ${id}`,
-        )
-        node.remove()
+        node?.remove()
       }
       placed = false
     },
@@ -828,9 +824,9 @@ function createComponentNode(renderer, node, instance) {
   /** @type {VNode<T, E> | null} */
   let content = null
   const props$ = new BehaviorSubject(node.props)
+  const mounted$ = new BehaviorSubject(false)
   const input = new Input(props$, instance)
-  /** @type {Subscription | null} */
-  let subscription = null
+  let subscription = new Subscription()
   /** @type {ElementPosition<T, E> | null} */
   let currentPosition = null
 
@@ -852,17 +848,25 @@ function createComponentNode(renderer, node, instance) {
       return content?.lastElement ?? null
     },
     mount() {
-      const render = node.component(input)
+      subscription = new Subscription()
+
+      const render = node.component(input, {
+        context: instance.context,
+        subscription,
+        mounted$: mounted$.asObservable(),
+        unmounted$: mounted$.pipe(map(mounted => !mounted)),
+      })
 
       content = createNode(renderer, node.id, render, downstream())
 
-      subscription = content.mount()
-
-      return new Subscription(() => {
+      subscription.add(content.mount())
+      subscription.add(() => {
         subscription?.unsubscribe()
         props$.complete()
         input.subscription.unsubscribe()
       })
+
+      return subscription
     },
     update(nextNode) {
       assert(
@@ -870,19 +874,25 @@ function createComponentNode(renderer, node, instance) {
         "component current position must not be null at update stage",
       )
       assert(
-        subscription,
+        !subscription.closed,
         "component subscription must not be null at update stage",
       )
       if (node.component !== nextNode.component) {
         subscription.unsubscribe()
+        subscription = new Subscription()
 
         props$.next(nextNode.props)
 
-        const render = nextNode.component(input)
+        const render = nextNode.component(input, {
+          context: instance.context,
+          subscription,
+          mounted$: mounted$.asObservable(),
+          unmounted$: mounted$.pipe(map(mounted => !mounted)),
+        })
 
         content = createNode(renderer, nextNode.id, render, downstream())
 
-        subscription = content.mount()
+        subscription.add(content.mount())
 
         content.placeIn(currentPosition)
 
@@ -954,6 +964,7 @@ function createSuspenseNode(renderer, node, instance) {
     node: node$,
     position: position$,
   }).pipe(
+    debounceTime(node.tolerance),
     distinctUntilChanged(
       (a, b) => a.node === b.node && a.position === b.position,
     ),

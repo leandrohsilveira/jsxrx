@@ -130,8 +130,15 @@ export interface ComponentInstance {
   suspension: SuspensionController
 }
 
+export interface Lifecycle {
+  context: IContextMap
+  subscription: Subscription
+  mounted$: Observable<boolean>
+  unmounted$: Observable<boolean>
+}
+
 export interface Component<P> {
-  (props: Observable<P>): ElementNode
+  (props: Observable<P>, lifecycle: Lifecycle): ElementNode
   displayName?: string
 }
 
@@ -176,6 +183,7 @@ export interface IRenderSuspenseNode extends RenderBase {
   type: (typeof VDOMType)["SUSPENSE"]
   fallback: ElementNode
   children: ElementNode
+  tolerance: number
 }
 
 export type IRenderText = string | number | bigint | boolean
