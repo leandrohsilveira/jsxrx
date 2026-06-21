@@ -22,7 +22,6 @@ import {
 import { VDOMType } from "../constants/vdom.js"
 import { ContextMap } from "../context.js"
 import { Input, isObservableDelegate, isRef, pending } from "../observable.js"
-import { findPreviousLastElement } from "../renderer/positioning.js"
 import { isRenderNode } from "./render.js"
 
 /**
@@ -82,7 +81,7 @@ export function createRoot(renderer, element) {
  */
 function createNode(renderer, parentId, node, instance) {
   if (node === null || node === undefined) {
-    return createNullNode(renderer)
+    return createNullNode()
   }
   if (isRenderNode(node)) {
     switch (node.type) {
@@ -117,36 +116,24 @@ function createNode(renderer, parentId, node, instance) {
 /**
  * @template T
  * @template E
- * @param {IRenderer<T, E>} renderer
  * @returns {VNode<T, E, null | undefined>}
  */
-function createNullNode(renderer) {
-  /** @type {ElementPosition<T, E> | null} */
-  let currentPosition = null
+function createNullNode() {
   return {
     key: null,
     type: VDOMType.NULL,
     get placed() {
-      return currentPosition !== null
+      return true
     },
     get lastElement() {
-      if (!currentPosition) return null
-      const previousPosition = findPreviousLastElement(
-        renderer,
-        currentPosition,
-      )
-      return previousPosition?.lastElement ?? null
+      return null
     },
     mount() {
       return new Subscription()
     },
     update() {},
-    placeIn(position) {
-      currentPosition = position
-    },
-    remove() {
-      currentPosition = null
-    },
+    placeIn() {},
+    remove() {},
   }
 }
 
