@@ -26,13 +26,13 @@ import { asArray, shallowComparator } from "@jsxrx/utils"
  * @param {Observable<BrowserRouterProps>} props$
  */
 export function BrowserRouter(props$) {
-  const { routes } = Props.take(props$)
+  const { routes$ } = Props.take(props$)
 
   const { url$, navigateTo } = createHistoryObservable()
 
   // @ts-expect-error yes, there's no id on default JSX type.
   return jsx("browserRouter:root", RouteComponent, {
-    routes,
+    routes: routes$,
     url: url$,
     navigateTo,
   })
@@ -52,17 +52,14 @@ export function BrowserRouter(props$) {
  * @param {import("@jsxrx/core").Lifecycle} lifecycle
  */
 export function RouteComponent(props$, { context }) {
-  const {
-    routes: routes$,
-    path,
-    url,
-    navigateTo,
-    matched,
-  } = Props.take(props$, { path: "", matched: true })
+  const { routes$, path$, url$, navigateTo$, matched$ } = Props.take(props$, {
+    path: "",
+    matched: true,
+  })
 
-  const navigateTo$ = emitter(navigateTo)
+  const navigateToEmmiter = emitter(navigateTo$)
 
-  const match$ = combine({ routes: routes$, path, url }).pipe(
+  const match$ = combine({ routes: routes$, path: path$, url: url$ }).pipe(
     debounceTime(1),
     map(({ routes, url, path }) =>
       matchUrl(
@@ -75,7 +72,7 @@ export function RouteComponent(props$, { context }) {
 
   /** @type {RouteResolverInput} */
   const resolverInput = {
-    url$: url,
+    url$,
     path: new Proxy(
       {},
       {
@@ -103,17 +100,17 @@ export function RouteComponent(props$, { context }) {
       },
     ),
     navigate(to, options) {
-      return navigateTo$.emit(to, options)
+      return navigateToEmmiter.emit(to, options)
     },
     context,
   }
 
-  return combine({ routes: routes$, path }).pipe(
+  return combine({ routes: routes$, path: path$ }).pipe(
     debounceTime(1),
     distinctUntilChanged(shallowComparator),
     map(({ routes, path }) => {
       if (isRoute(routes)) {
-        return matched.pipe(
+        return matched$.pipe(
           distinctUntilChanged(),
           debounceTime(1),
           map(match => {
@@ -125,10 +122,10 @@ export function RouteComponent(props$, { context }) {
               routes.children
                 ? // @ts-expect-error standard jsx function does not have this id optmization
                   jsx(`route:${routes.id}:children`, RouteComponent, {
-                    url,
+                    url: url$,
                     path,
                     routes: routes.children,
-                    navigateTo,
+                    navigateTo: navigateTo$,
                   })
                 : null,
             )
@@ -141,7 +138,7 @@ export function RouteComponent(props$, { context }) {
 
       const routesEntries = Object.entries(routes)
 
-      const matchedRoute$ = url.pipe(
+      const matchedRoute$ = url$.pipe(
         debounceTime(1),
         map(url => {
           const [, route] =
@@ -162,8 +159,8 @@ export function RouteComponent(props$, { context }) {
           {
             routes: route,
             path: subPath,
-            url,
-            navigateTo,
+            url: url$,
+            navigateTo: navigateTo$,
             matched: matchedRoute$.pipe(
               map(matchedRoute => matchedRoute === route),
             ),

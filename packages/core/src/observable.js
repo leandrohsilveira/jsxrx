@@ -171,7 +171,7 @@ export class Input extends ObservableDelegate {
   #take(keys, defaultProps) {
     return new Proxy(/** @type {InputTake<T & D>} */ ({}), {
       get: (_, key) => {
-        const name = String(key)
+        const name = String(key).replace(/\$$/, "")
         const defValue = /** @type {*} */ (defaultProps)?.[name]
         const props$ = /** @type {Observable<*>} */ (this.#props$)
         return new ObservableDelegate(

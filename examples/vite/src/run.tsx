@@ -45,14 +45,14 @@ type CountDisplayProps = PropsWithChildren<{
 }>
 
 function CountDisplay(input$: Observable<CountDisplayProps>) {
-  const { count, children } = Props.take(input$, { count: 0 })
+  const { count$, children$ } = Props.take(input$, { count: 0 })
 
   return (
     <>
       <Suspense fallback={<div>Loading count...</div>}>
-        <div>The count is {count}</div>
+        <div>The count is {count$}</div>
       </Suspense>
-      {children}
+      {children$}
     </>
   )
 }
