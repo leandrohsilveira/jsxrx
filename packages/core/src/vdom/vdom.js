@@ -11,6 +11,7 @@ import {
   debounceTime,
   distinctUntilChanged,
   filter,
+  identity,
   isObservable,
   map,
   Subject,
@@ -964,7 +965,7 @@ function createSuspenseNode(renderer, node, instance) {
     node: node$,
     position: position$,
   }).pipe(
-    debounceTime(node.tolerance),
+    node.tolerance ? debounceTime(node.tolerance) : identity,
     distinctUntilChanged(
       (a, b) => a.node === b.node && a.position === b.position,
     ),
@@ -982,7 +983,7 @@ function createSuspenseNode(renderer, node, instance) {
       return node.key ?? null
     },
     get lastElement() {
-      return current?.lastElement ?? null
+      return current?.placed ? current.lastElement : null
     },
 
     mount() {

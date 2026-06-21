@@ -183,7 +183,7 @@ export interface IRenderSuspenseNode extends RenderBase {
   type: (typeof VDOMType)["SUSPENSE"]
   fallback: ElementNode
   children: ElementNode
-  tolerance: number
+  tolerance?: number
 }
 
 export type IRenderText = string | number | bigint | boolean

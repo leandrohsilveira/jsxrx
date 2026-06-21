@@ -66,7 +66,7 @@ export function _fragment(id, children, key) {
  * @param {ElementNode} children
  * @param {*} key
  */
-export function _suspense(id, { fallback, tolerance = 1 }, children, key) {
+export function _suspense(id, { fallback, tolerance }, children, key) {
   return new RenderSuspenseNode(id, fallback, children, key, tolerance)
 }
 
@@ -189,7 +189,7 @@ export class RenderSuspenseNode {
    * @param {ElementNode} fallback
    * @param {ElementNode} children
    * @param {*} key
-   * @param {number} tolerance
+   * @param {number} [tolerance]
    */
   constructor(id, fallback, children, key, tolerance) {
     this.id = id
