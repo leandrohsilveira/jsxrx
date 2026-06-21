@@ -1,6 +1,6 @@
 /**
  * @import { Operator } from "rxjs"
- * @import { IState, IDeferred as IDeferred, CombineOutput, Properties, ComponentInstance, InputTake, Ref, AsyncState, PendingState } from "./jsx"
+ * @import { IState, IDeferred as IDeferred, CombineOutput, Properties, ComponentInstance, InputTake, Ref, AsyncState, PendingState, InputSpread } from "./jsx"
  */
 
 import { assert, shallowComparator } from "@jsxrx/utils"
@@ -138,20 +138,20 @@ export class Input extends ObservableDelegate {
    * @returns {InputTake<T & D>}
    */
   take(defaultProps) {
-    return this.#take(null, defaultProps)
+    return this.#take(null, "suffix", defaultProps)
   }
 
   /**
    * @template [D=T]
    * @param {D} [defaultProps]
-   * @returns {Observable<InputTake<T & D>>}
+   * @returns {Observable<InputSpread<T & D>>}
    */
   spread(defaultProps) {
     return this.#props$.pipe(
       map(props => Object.keys(props)),
       debounceTime(1),
       distinctUntilChanged(shallowComparator),
-      map(keys => this.#take(keys, defaultProps)),
+      map(keys => /** */ this.#take(keys, "plain", defaultProps)),
     )
   }
 
@@ -164,14 +164,43 @@ export class Input extends ObservableDelegate {
 
   /**
    * @template [D=T]
+   * @overload
    * @param {(string | symbol)[] | null} keys
+   * @param {'suffix'} namingStrategy
    * @param {D} [defaultProps]
    * @returns {InputTake<T & D>}
    */
-  #take(keys, defaultProps) {
+  /**
+   * @template [D=T]
+   * @overload
+   * @param {(string | symbol)[] | null} keys
+   * @param {'plain'} namingStrategy
+   * @param {D} [defaultProps]
+   * @returns {InputSpread<T & D>}
+   */
+  /**
+  /**
+   * @template [D=T]
+    * @overload
+   * @param {(string | symbol)[] | null} keys
+   * @param {'plain' | 'suffix'} namingStrategy
+    * @param {D} [defaultProps]
+   * @returns {InputTake<T & D>  | InputSpread<T & D>}
+   */
+  /**
+   * @template [D=T]
+   * @param {(string | symbol)[] | null} keys
+   * @param {'plain' | 'suffix'} namingStrategy
+   * @param {D} [defaultProps]
+   * @returns {InputTake<T & D> | InputSpread<T & D>}
+   */
+  #take(keys, namingStrategy, defaultProps) {
     return new Proxy(/** @type {InputTake<T & D>} */ ({}), {
       get: (_, key) => {
-        const name = String(key).replace(/\$$/, "")
+        const name =
+          namingStrategy === "suffix"
+            ? String(key).replace(/\$$/, "")
+            : String(key)
         const defValue = /** @type {*} */ (defaultProps)?.[name]
         const props$ = /** @type {Observable<*>} */ (this.#props$)
         return new ObservableDelegate(

@@ -94,6 +94,14 @@ export type Properties<T> = {
   [K in keyof T]: T[K] extends Ref<any> ? T[K] : T[K] | Observable<T[K]>
 }
 
+export type InputSpread<P> = {
+  [K in keyof P]-?: P[K] extends Ref<infer V>
+    ? Ref<V>
+    : P[K] extends Observable<infer V>
+      ? Observable<V>
+      : Observable<P[K]>
+}
+
 export type InputTake<P> = {
   [K in keyof P as `${K}$`]-?: P[K] extends Ref<infer V>
     ? Ref<V>

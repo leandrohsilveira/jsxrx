@@ -1,5 +1,5 @@
 /**
- * @import { IState, IDeferred, InputTake, Ref, Emitter, OptionalEmitter } from "./jsx"
+ * @import { IState, IDeferred, InputTake, Ref, Emitter, OptionalEmitter, InputSpread } from "./jsx"
  */
 
 import { assert } from "@jsxrx/utils"
@@ -135,7 +135,7 @@ export class Props {
       input$ instanceof Input,
       "Props.spread input$ must be instance of Input class",
     )
-    return /** @type {Observable<InputTake<P & D>>} */ (
+    return /** @type {Observable<InputSpread<P & D>>} */ (
       input$.spread(defaultProps)
     )
   }
