@@ -641,7 +641,8 @@ function createChildrenNode(
    */
   function nextPosition(currentPosition, index) {
     return {
-      ...currentPosition,
+      previous: currentPosition,
+      parent: currentPosition.parent,
       get lastElement() {
         return positions[index]?.lastElement ?? undefined
       },
