@@ -14,6 +14,8 @@ import {
   identity,
   isObservable,
   map,
+  of,
+  startWith,
   Subject,
   Subscription,
   switchMap,
@@ -21,7 +23,12 @@ import {
 } from "rxjs"
 import { VDOMType } from "../constants/vdom.js"
 import { ContextMap } from "../context.js"
-import { Input, isObservableDelegate, isRef, pending } from "../observable.js"
+import {
+  Input,
+  isActivityAwareObservable,
+  isRef,
+  pending,
+} from "../observable.js"
 import { isRenderNode } from "./render.js"
 
 /**
@@ -331,13 +338,29 @@ function createElementNode(renderer, node, instance) {
         }
         continue
       }
-      if (isObservableDelegate(value)) {
+      if (isObservable(value)) {
         propsSuspensions[name] ??= instance.suspension.downstream()
         const suspension = propsSuspensions[name]
         subscriptions.suspensions[name]?.unsubscribe()
-        subscriptions.suspensions[name] = pending(value).subscribe(pending =>
-          pending ? suspension.suspend() : suspension.resume(),
-        )
+
+        if (isActivityAwareObservable(value)) {
+          subscriptions.suspensions[name] = value.pending$
+            .pipe(debounceTime(1), distinctUntilChanged())
+            .subscribe(pending =>
+              pending ? suspension.suspend() : suspension.resume(),
+            )
+        } else {
+          subscriptions.suspensions[name] = value
+            .pipe(
+              map(() => false),
+              startWith(true),
+              debounceTime(1),
+              distinctUntilChanged(),
+            )
+            .subscribe(pending =>
+              pending ? suspension.suspend() : suspension.resume(),
+            )
+        }
       }
       if (isObservable(value)) {
         observables[name] ??= new BehaviorSubject(value)
@@ -943,7 +966,21 @@ function createSuspenseNode(renderer, node, instance) {
   /** @type {VNode<T, E> | null} */
   let current = null
 
+  const suspendedProp$ = new BehaviorSubject(node.suspended)
   const context = createSuspensionContext()
+
+  const suspended$ = combineLatest([
+    suspendedProp$.pipe(
+      switchMap(suspended => {
+        if (isObservable(suspended)) return suspended
+        return of(suspended)
+      }),
+    ),
+    context.suspended$,
+  ]).pipe(
+    map(suspensions => suspensions.some(suspended => suspended)),
+    distinctUntilChanged(),
+  )
 
   /** @type {Subject<VNode<T, E> | null>} */
   const node$ = new Subject()
@@ -1008,7 +1045,7 @@ function createSuspenseNode(renderer, node, instance) {
         children = null
       })
       subscription.add(
-        context.suspended$.pipe(distinctUntilChanged()).subscribe(suspended => {
+        suspended$.pipe(distinctUntilChanged()).subscribe(suspended => {
           assert(
             fallback,
             "suspense node's fallback VDOM must not be null on suspend event",
@@ -1034,6 +1071,7 @@ function createSuspenseNode(renderer, node, instance) {
       )
       fallback.update(nextNode.fallback)
       children.update(nextNode.children)
+      suspendedProp$.next(nextNode.suspended)
     },
     placeIn(position) {
       position$.next(position)

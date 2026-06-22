@@ -62,12 +62,12 @@ export function _fragment(id, children, key) {
 
 /**
  * @param {string} id
- * @param {{ fallback: ElementNode, tolerance?: number }} props
+ * @param {import("../suspense.js").SuspenseProps} props
  * @param {ElementNode} children
  * @param {*} key
  */
-export function _suspense(id, { fallback, tolerance }, children, key) {
-  return new RenderSuspenseNode(id, fallback, children, key, tolerance)
+export function _suspense(id, props, children, key) {
+  return new RenderSuspenseNode(id, props, children, key)
 }
 
 /**
@@ -186,17 +186,17 @@ export class RenderFragmentNode {
 export class RenderSuspenseNode {
   /**
    * @param {string} id
-   * @param {ElementNode} fallback
+   * @param {import("../suspense.js").SuspenseProps} props
    * @param {ElementNode} children
    * @param {*} key
-   * @param {number} [tolerance]
    */
-  constructor(id, fallback, children, key, tolerance) {
+  constructor(id, { fallback, tolerance, suspended }, children, key) {
     this.id = id
     this.fallback = fallback
     this.children = children
     this.key = key
     this.tolerance = tolerance
+    this.suspended = suspended
   }
 
   type = VDOMType.SUSPENSE
@@ -208,6 +208,8 @@ export class RenderSuspenseNode {
     if (node === null || node === undefined) return false
     if (node.id !== this.id) return false
     if (node.type !== VDOMType.SUSPENSE) return false
+    if (node.tolerance !== this.tolerance) return false
+    if (node.suspended !== this.suspended) return false
     if (!shallowComparator(node.fallback, this.fallback, compareRenderNode))
       return false
     return shallowComparator(node.children, this.children, compareRenderNode)

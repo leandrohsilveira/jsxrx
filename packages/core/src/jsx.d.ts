@@ -192,6 +192,7 @@ export interface IRenderSuspenseNode extends RenderBase {
   fallback: ElementNode
   children: ElementNode
   tolerance?: number
+  suspended?: boolean
 }
 
 export type IRenderText = string | number | bigint | boolean
