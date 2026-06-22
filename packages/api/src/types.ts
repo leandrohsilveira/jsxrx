@@ -1,4 +1,4 @@
-import { AsyncState, PendingState } from "@jsxrx/core"
+import { AsyncState } from "@jsxrx/core"
 import { Observable } from "rxjs"
 
 export type ParamsMap = Record<string, unknown>
@@ -49,7 +49,7 @@ export interface Action<I, O> extends AsyncState<O> {
 
 export interface HttpEndpoint<I, O> {
   send: RequestFn<I, O>
-  fetch(input: Observable<I>): Observable<PendingState<O>>
+  fetch(input: Observable<I>): Observable<O>
   action(): Action<I, O>
 }
 

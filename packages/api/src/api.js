@@ -4,18 +4,15 @@
  * @import { PendingState } from "@jsxrx/core"
  */
 
-import { state } from "@jsxrx/core"
+import { activity, state } from "@jsxrx/core"
 import { asArray, shallowComparator } from "@jsxrx/utils"
 import {
-  catchError,
   debounceTime,
   distinctUntilChanged,
   filter,
   from,
   map,
-  of,
   shareReplay,
-  startWith,
   switchMap,
 } from "rxjs"
 
@@ -93,25 +90,22 @@ export function createHttpClient({ baseUrl, defaultHeaders = {} }) {
         }
       )
 
+      const { start, complete, toObservable } = activity()
+
       return {
         send,
         fetch(input$) {
-          return input$.pipe(
-            debounceTime(1),
-            distinctUntilChanged(shallowComparator),
-            switchMap(
-              input =>
-                /** @type {Observable<PendingState<Output>>} */ (
-                  from(send(input)).pipe(
-                    map(value => ({ state: "success", value, error: null })),
-                    startWith({ state: "pending", value: null, error: null }),
-                    catchError(error =>
-                      of({ state: "error", value: null, error }),
-                    ),
-                  )
-                ),
+          return toObservable(
+            input$.pipe(
+              debounceTime(1),
+              distinctUntilChanged(shallowComparator),
+              start,
+              switchMap(
+                input => /** @type {Observable<Output>} */ (from(send(input))),
+              ),
+              complete,
+              shareReplay({ bufferSize: 1, refCount: true }),
             ),
-            shareReplay({ bufferSize: 1, refCount: true }),
           )
         },
         action() {

@@ -54,3 +54,17 @@ export function matchUrl(url, pattern, mode = "startsWith") {
     fragments: urlFragments,
   }
 }
+
+/**
+ * @param {string} pathname
+ * @param {Record<string, string | number | null | undefined>} params
+ */
+export function parsePathnameParams(pathname, params) {
+  return Object.entries(params).reduce((acc, [name, value]) => {
+    if (value === undefined || value === null) return acc
+    return acc.replace(
+      new RegExp(`\\/:${name}(\\/|$)`, "g"),
+      (_, suffix) => `/${value}${suffix}`,
+    )
+  }, pathname)
+}

@@ -10,6 +10,7 @@ import {
   Observable,
   switchMap,
   take,
+  lastValueFrom,
 } from "rxjs"
 import { Defer, ElementRef, Input, isRef, State } from "./observable"
 
@@ -43,19 +44,8 @@ export function emitter(value$) {
   return /** @type {*} */ ({
     // @ts-expect-error yeah implicit any[]
     async emit(...args) {
-      return new Promise((resolve, reject) => {
-        return value$.pipe(take(1)).subscribe({
-          next: async fn => {
-            if (!fn) return resolve(undefined)
-            try {
-              return resolve(await fn(...args))
-            } catch (err) {
-              return reject(err)
-            }
-          },
-          error: reject,
-        })
-      })
+      const fn = await lastValueFrom(value$.pipe(take(1)))
+      return await fn?.(...args)
     },
   })
 }

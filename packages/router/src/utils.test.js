@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { matchUrl } from "./utils.js"
+import { matchUrl, parsePathnameParams } from "./utils.js"
 
 describe("matchUrl function", () => {
   describe("given pattern with parameters", () => {
@@ -198,6 +198,72 @@ describe("matchUrl function", () => {
 
       expect(match).toBeNull()
     })
+  })
+})
+
+describe("parsePathnameParams function", () => {
+  it("should replace a single param in the pathname", () => {
+    const result = parsePathnameParams("/path/:id/name", { id: "1" })
+
+    expect(result).toBe("/path/1/name")
+  })
+
+  it("should replace multiple params in the pathname", () => {
+    const result = parsePathnameParams("/:a/:b/:c", { a: "x", b: "y", c: "z" })
+
+    expect(result).toBe("/x/y/z")
+  })
+
+  it("should handle param at the end of the pathname", () => {
+    const result = parsePathnameParams("/path/:id", { id: "42" })
+
+    expect(result).toBe("/path/42")
+  })
+
+  it("should handle numeric values", () => {
+    const result = parsePathnameParams("/path/:id/name", { id: 123 })
+
+    expect(result).toBe("/path/123/name")
+  })
+
+  it("should skip params with undefined value", () => {
+    const result = parsePathnameParams("/path/:id/name", { id: undefined })
+
+    expect(result).toBe("/path/:id/name")
+  })
+
+  it("should skip params with null value", () => {
+    const result = parsePathnameParams("/path/:id/name", { id: null })
+
+    expect(result).toBe("/path/:id/name")
+  })
+
+  it("should skip a param with undefined value but replace other params", () => {
+    const result = parsePathnameParams("/:a/:b/:c", {
+      a: "x",
+      b: undefined,
+      c: "z",
+    })
+
+    expect(result).toBe("/x/:b/z")
+  })
+
+  it("should return the same pathname when params is empty", () => {
+    const result = parsePathnameParams("/path/to/url", {})
+
+    expect(result).toBe("/path/to/url")
+  })
+
+  it("should return the same pathname when no params match the pathname", () => {
+    const result = parsePathnameParams("/path/to/url", { id: "1" })
+
+    expect(result).toBe("/path/to/url")
+  })
+
+  it("should handle pathname with no params", () => {
+    const result = parsePathnameParams("/", {})
+
+    expect(result).toBe("/")
   })
 })
 

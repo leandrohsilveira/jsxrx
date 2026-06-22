@@ -5,7 +5,7 @@
 
 import { assert } from "@jsxrx/utils"
 import { BehaviorSubject, combineLatest, map, of, switchMap } from "rxjs"
-import { isObservableDelegate, ObservableDelegate } from "./observable"
+import { toActivityAware } from "./observable"
 
 /**
  * @template T
@@ -79,7 +79,8 @@ export class ContextMap {
       context instanceof Context,
       "The context to be required needs to be instance of Context class",
     )
-    return new ObservableDelegate(
+
+    return toActivityAware(attach =>
       this.#upstream$.pipe(
         switchMap(contexts => {
           const value$ = contexts[context.symbol]
@@ -87,18 +88,7 @@ export class ContextMap {
             value$,
             `Unable to find required context for ${String(context.symbol)}`,
           )
-          return value$
-        }),
-      ),
-      this.#upstream$.pipe(
-        switchMap(contexts => {
-          const value$ = contexts[context.symbol]
-          assert(
-            value$,
-            `Unable to find required context for ${String(context.symbol)}`,
-          )
-          if (isObservableDelegate(value$)) return value$.source
-          return value$
+          return attach(value$)
         }),
       ),
     )

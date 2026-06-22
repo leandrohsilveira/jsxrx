@@ -13,7 +13,7 @@ import {
   startWith,
   Subject,
 } from "rxjs"
-import { matchUrl } from "../utils.js"
+import { matchUrl, parsePathnameParams } from "../utils.js"
 import { jsx } from "@jsxrx/core/jsx-runtime"
 import { asArray, shallowComparator } from "@jsxrx/utils"
 
@@ -28,13 +28,14 @@ import { asArray, shallowComparator } from "@jsxrx/utils"
 export function BrowserRouter(props$) {
   const { routes$ } = Props.take(props$)
 
-  const { url$, navigateTo } = createHistoryObservable()
+  const { url$, navigateTo, refresh } = createHistoryObservable()
 
   // @ts-expect-error yes, there's no id on default JSX type.
   return jsx("browserRouter:root", RouteComponent, {
     routes: routes$,
     url: url$,
     navigateTo,
+    refresh,
   })
 }
 
@@ -43,6 +44,7 @@ export function BrowserRouter(props$) {
  * @property {Routes} routes
  * @property {URL} url
  * @property {NavigateFn} navigateTo
+ * @property {() => void} refresh
  * @property {string} [path]
  * @property {boolean} [matched]
  */
@@ -52,11 +54,15 @@ export function BrowserRouter(props$) {
  * @param {import("@jsxrx/core").Lifecycle} lifecycle
  */
 export function RouteComponent(props$, { context }) {
-  const { routes$, path$, url$, navigateTo$, matched$ } = Props.take(props$, {
-    path: "",
-    matched: true,
-  })
+  const { routes$, path$, url$, navigateTo$, matched$, refresh$ } = Props.take(
+    props$,
+    {
+      path: "",
+      matched: true,
+    },
+  )
 
+  const refreshEmitter = emitter(refresh$)
   const navigateToEmmiter = emitter(navigateTo$)
 
   const match$ = combine({ routes: routes$, path: path$, url: url$ }).pipe(
@@ -102,6 +108,9 @@ export function RouteComponent(props$, { context }) {
     navigate(to, options) {
       return navigateToEmmiter.emit(to, options)
     },
+    refresh() {
+      return refreshEmitter.emit()
+    },
     context,
   }
 
@@ -126,6 +135,7 @@ export function RouteComponent(props$, { context }) {
                     path,
                     routes: routes.children,
                     navigateTo: navigateTo$,
+                    refresh: refresh$,
                   })
                 : null,
             )
@@ -149,6 +159,7 @@ export function RouteComponent(props$, { context }) {
             }) ?? []
           return route
         }),
+        distinctUntilChanged(),
       )
 
       return routesEntries.map(([key, route]) => {
@@ -161,6 +172,7 @@ export function RouteComponent(props$, { context }) {
             path: subPath,
             url: url$,
             navigateTo: navigateTo$,
+            refresh: refresh$,
             matched: matchedRoute$.pipe(
               map(matchedRoute => matchedRoute === route),
             ),
@@ -193,15 +205,23 @@ function resolveProps(route, input, children) {
   }
 }
 
+const distinctUrlChanged = distinctUntilChanged(
+  (a, b) => a?.toString() === b?.toString(),
+)
+const mapToUrl = map(() => toUrl())
+
 function createHistoryObservable() {
   /** @type {Subject<URL>} */
   const navigate$ = new Subject()
-  const popstate$ = fromEvent(window, "popstate").pipe(map(() => toUrl()))
+  /** @type {Subject<Symbol>} */
+  const refresher$ = new Subject()
+
+  const popstate$ = fromEvent(window, "popstate").pipe(mapToUrl)
 
   return {
-    url$: merge(navigate$, popstate$).pipe(
-      startWith(toUrl()),
-      distinctUntilChanged((a, b) => a?.toString() === b?.toString()),
+    url$: merge(
+      merge(navigate$, popstate$).pipe(startWith(toUrl()), distinctUrlChanged),
+      refresher$.pipe(mapToUrl),
     ),
 
     /**
@@ -209,7 +229,8 @@ function createHistoryObservable() {
      * @param {NavigateOptions} [options]
      */
     navigateTo(to, options) {
-      const url = toUrl(to)
+      const url = toUrl(parsePathnameParams(to, options?.params ?? {}))
+
       if (options?.query) {
         for (const [name, values] of Object.entries(options.query)) {
           for (const value of asArray(values)) {
@@ -218,17 +239,25 @@ function createHistoryObservable() {
           }
         }
       }
+
       navigate$.next(url)
-      window.history.pushState({}, "", url.toString())
+
+      if (options?.replace)
+        return window.history.replaceState({}, "", url.toString())
+      return window.history.pushState({}, "", url.toString())
+    },
+
+    refresh() {
+      refresher$.next(Symbol())
     },
   }
+}
 
-  /**
-   * @param {string} [to]
-   */
-  function toUrl(to) {
-    return new URL(to ?? window.location.href, window.location.origin)
-  }
+/**
+ * @param {string} [to]
+ */
+function toUrl(to) {
+  return new URL(to ?? window.location.href, window.location.origin)
 }
 
 /**

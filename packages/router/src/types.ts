@@ -2,10 +2,12 @@ import { Component, IContextMap, Properties, WithChildren } from "@jsxrx/core"
 import { Observable } from "rxjs"
 
 export type NavigateOptions = {
+  replace?: boolean
   query?: Record<
     string,
     string | number | null | undefined | (string | number | null | undefined)[]
   >
+  params?: Record<string, string | number | null | undefined>
 }
 export type NavigateFn = (to: string, options?: NavigateOptions) => void
 
@@ -18,6 +20,7 @@ export interface RouteResolverInput<
   context: IContextMap
   url$: Observable<URL>
   navigate: NavigateFn
+  refresh: () => void
 }
 
 export type RouteWithChildrenOptions = {

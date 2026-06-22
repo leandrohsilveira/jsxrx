@@ -12,7 +12,6 @@ import {
   filter,
   isObservable,
   map,
-  merge,
   Observable,
   of,
   share,
@@ -70,6 +69,61 @@ export class ObservableDelegate extends Observable {
         shareReplay({ refCount: true, bufferSize: 1 }),
       ),
       this.source,
+    )
+  }
+
+  // @ts-expect-error vararg
+  subscribe(...args) {
+    return this.#delegate.subscribe(...args)
+  }
+}
+
+/**
+ * @template T
+ * @extends {Observable<T>}
+ */
+export class ActivityAwareObservable extends Observable {
+  /**
+   * @param {Observable<T>} observable
+   * @param {Observable<boolean>} pending$
+   */
+  constructor(observable, pending$) {
+    super()
+    this.#delegate = observable
+    this.operator = observable.operator
+    this.pending$ = pending$
+  }
+
+  #delegate
+
+  /**
+   * @param {(value: T) => void} each
+   */
+  forEach(each) {
+    return this.#delegate.forEach(each)
+  }
+
+  /**
+   * @template R
+   * @param {Operator<T, R>} [operator]
+   */
+  lift(operator) {
+    return this.#delegate.lift(operator)
+  }
+
+  toPromise() {
+    return this.#delegate.toPromise()
+  }
+
+  // @ts-expect-error vararg
+  pipe(...operators) {
+    return new ActivityAwareObservable(
+      this.#delegate.pipe(
+        // @ts-expect-error vararg
+        ...operators,
+        shareReplay({ refCount: true, bufferSize: 1 }),
+      ),
+      this.pending$,
     )
   }
 
@@ -203,26 +257,16 @@ export class Input extends ObservableDelegate {
             : String(key)
         const defValue = /** @type {*} */ (defaultProps)?.[name]
         const props$ = /** @type {Observable<*>} */ (this.#props$)
-        return new ObservableDelegate(
+        return toActivityAware(attach =>
           props$.pipe(
-            debounceTime(1),
             switchMap(props => {
               const value = /** @type {*} */ (props[name])
               if (isRef(value)) return of(value)
               if (isObservable(value))
-                return value.pipe(map(value => value ?? defValue))
+                return attach(value.pipe(map(value => value ?? defValue)))
               return of(value ?? defValue)
             }),
             distinctUntilChanged(),
-          ),
-          props$.pipe(
-            debounceTime(1),
-            switchMap(props => {
-              const value = /** @type {*} */ (props[name])
-              if (isObservableDelegate(value)) return value.source
-              if (isObservable(value)) return value
-              return of(value)
-            }),
           ),
         )
       },
@@ -362,27 +406,10 @@ export function combine(data) {
  */
 export function pending(value, debounce = 5) {
   if (isAsyncState(value)) {
-    return value.pending$
+    return value.pending$.pipe(debounceTime(debounce), distinctUntilChanged())
   }
-  if (isObservableDelegate(value)) {
-    const pending$ = new BehaviorSubject(true)
-    const observed = value.source.pipe(tap(() => pending$.next(true)))
-    return merge(
-      observed,
-      value.pipe(
-        debounceTime(1),
-        tap({
-          next: () => pending$.next(false),
-          error: () => pending$.next(false),
-        }),
-        filter(() => false),
-      ),
-      pending$,
-    ).pipe(
-      filter(value => typeof value === "boolean"),
-      debounceTime(debounce),
-      distinctUntilChanged(),
-    )
+  if (isActivityAwareObservable(value)) {
+    return value.pending$.pipe(debounceTime(debounce), distinctUntilChanged())
   }
   return value.pipe(
     map(value => {
@@ -395,14 +422,52 @@ export function pending(value, debounce = 5) {
   )
 }
 
+export function activity() {
+  const pending$ = new BehaviorSubject(true)
+  return {
+    pending$: pending$.pipe(distinctUntilChanged()),
+    start: tap({
+      next: () => pending$.next(true),
+      error: () => pending$.next(false),
+      complete: () => pending$.next(false),
+    }),
+    complete: tap({
+      next: () => pending$.next(false),
+      error: () => pending$.next(false),
+      complete: () => pending$.next(false),
+    }),
+    /**
+     * @template T
+     *  @param {Observable<T>} observable
+     *  @returns {Observable<T>}
+     */
+    toObservable(observable) {
+      return new ActivityAwareObservable(observable, pending$)
+    },
+  }
+}
+
 /**
  * @template T
- * @param {Observable<PendingState<T>>} state$
+ * @param {(attach: (observable: Observable<*>) => Observable<T>) => Observable<T>} attacher
+ * @returns {Observable<T>}
  */
-export function asyncValue(state$) {
-  return state$.pipe(
-    filter(result => result.state === "success"),
-    map(result => result.value),
+export function toActivityAware(attacher) {
+  const pending$ = new BehaviorSubject(false)
+
+  return new ActivityAwareObservable(
+    attacher(observable => {
+      if (isActivityAwareObservable(observable)) {
+        return new Observable(subscriber => {
+          subscriber.add(observable.subscribe(subscriber))
+          subscriber.add(observable.pending$.subscribe(pending$))
+
+          return subscriber
+        })
+      }
+      return observable
+    }),
+    pending$,
   )
 }
 
@@ -429,6 +494,13 @@ export function isAsyncState(value) {
     "state$" in value &&
     isObservable(value.state$)
   )
+}
+
+/**
+ * @param {unknown} observable
+ */
+export function isActivityAwareObservable(observable) {
+  return observable instanceof ActivityAwareObservable
 }
 
 /**
