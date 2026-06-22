@@ -1,6 +1,5 @@
 /**
- * @import { Observable } from "rxjs"
- * @import { Component, IRenderComponentNode, IRenderElementNode, IRenderTextNode, Obj, IRenderNode, IRenderFragmentNode, ElementNode, IRenderObservableNode, IRenderSuspenseNode } from "../jsx"
+ * @import { Component, IRenderComponentNode, IRenderElementNode, Obj, IRenderNode, IRenderFragmentNode, ElementNode, IRenderObservableNode, IRenderSuspenseNode, IRenderRawHtmlNode } from "../jsx"
  */
 
 import { asArray, shallowComparator } from "@jsxrx/utils"
@@ -79,8 +78,40 @@ export function isRenderNode(value) {
     value instanceof RenderElementNode ||
     value instanceof RenderComponentNode ||
     value instanceof RenderFragmentNode ||
-    value instanceof RenderSuspenseNode
+    value instanceof RenderSuspenseNode ||
+    value instanceof RenderRawHtmlNode
   )
+}
+
+/**
+ * @class
+ * @implements {IRenderRawHtmlNode}
+ */
+export class RenderRawHtmlNode {
+  /**
+   * @param {string} id
+   * @param {IRenderRawHtmlNode['content']} content
+   * @param {*} key
+   */
+  constructor(id, content, key) {
+    this.id = id
+    this.content = content
+    this.key = key
+  }
+
+  type = VDOMType.RAW_HTML
+
+  /**
+   * @param {IRenderNode} node
+   */
+  compareTo(node) {
+    if (node === null || node === undefined) return false
+    if (node.id !== this.id) return false
+    if (node.type !== VDOMType.RAW_HTML) return false
+    if (node.content !== this.content) return false
+    if (node.key !== this.key) return false
+    return true
+  }
 }
 
 /**

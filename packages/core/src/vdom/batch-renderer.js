@@ -51,6 +51,13 @@ export class BatchRenderer {
   }
 
   /**
+   * @param {string} raw
+   */
+  createElementsFromRaw(raw) {
+    return this.#renderer.createElementsFromRaw(raw)
+  }
+
+  /**
    * @param {string} text
    * @param {T} node
    */

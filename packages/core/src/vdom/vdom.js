@@ -1,6 +1,6 @@
 /**
  * @import { Observable } from "rxjs"
- * @import { ComponentInstance, ElementNode, ElementPosition, IRenderComponentNode, IRenderElementNode, IRenderer, IRenderFragmentNode, IRenderSuspenseNode, IRenderText, Ref, SuspensionContext, SuspensionController } from "../jsx.js"
+ * @import { ComponentInstance, ElementNode, ElementPosition, IRenderComponentNode, IRenderElementNode, IRenderer, IRenderFragmentNode, IRenderRawHtmlNode, IRenderSuspenseNode, IRenderText, Ref, SuspensionContext, SuspensionController } from "../jsx.js"
  * @import { VChildren, VNode, VNodeComponent, VNodeObservable, VNodeWithChildren, VRoot } from "./types.js"
  */
 
@@ -11,6 +11,7 @@ import {
   debounceTime,
   distinctUntilChanged,
   filter,
+  from,
   identity,
   isObservable,
   map,
@@ -100,6 +101,8 @@ function createNode(renderer, parentId, node, instance) {
         return createComponentNode(renderer, node, instance)
       case VDOMType.SUSPENSE:
         return createSuspenseNode(renderer, node, instance)
+      case VDOMType.RAW_HTML:
+        return createRawHtmlNode(renderer, node, instance)
     }
   }
   if (isObservable(node))
@@ -1145,5 +1148,127 @@ function createSuspensionContext() {
       },
       downstream,
     }
+  }
+}
+
+/**
+ * @template T
+ * @template E
+ * @param {IRenderer<T, E>} renderer
+ * @param {IRenderRawHtmlNode} node
+ * @param {ComponentInstance} instance
+ * @returns {VNode<T, E, IRenderRawHtmlNode>}
+ */
+function createRawHtmlNode(renderer, node, instance) {
+  /** @type {string | null | undefined} */
+  let content = null
+  /** @type {(T | E)[]} */
+  let nodes = []
+  /** @type {Subscription | null} */
+  let subscription = null
+
+  let placed = false
+
+  /** @type {ElementPosition<T, E> | null} */
+  let currentPosition = null
+
+  /** @type {Subject<boolean> | null} */
+  let pending$ = null
+
+  return {
+    get key() {
+      return node.key ?? null
+    },
+    get placed() {
+      return placed
+    },
+    get lastElement() {
+      return nodes.at(-1) ?? null
+    },
+    type: VDOMType.RAW_HTML,
+    name: "rawHtml",
+    mount() {
+      let observable
+      pending$ = new BehaviorSubject(true)
+
+      if (isObservable(node.content)) observable = node.content
+      else if (node.content instanceof Promise) observable = from(node.content)
+      else observable = of(node.content)
+
+      subscription = observable.pipe(distinctUntilChanged()).subscribe(raw => {
+        pending$?.next(false)
+        content = raw
+        if (content) nodes = renderer.createElementsFromRaw(content)
+        else nodes = []
+      })
+
+      subscription.add(
+        pending$
+          .pipe(debounceTime(1), distinctUntilChanged())
+          .subscribe(pending => {
+            if (pending) instance.suspension.suspend()
+            else instance.suspension.resume()
+          }),
+      )
+
+      return new Subscription(() => {
+        pending$?.complete()
+        instance.suspension.complete()
+        subscription?.unsubscribe()
+        nodes = []
+        content = null
+      })
+    },
+    update(newNode) {
+      if (newNode.id !== node.id || newNode.content !== node.content) {
+        subscription?.unsubscribe()
+
+        let observable
+
+        if (isObservable(node.content)) observable = node.content
+        if (node.content instanceof Promise) observable = from(node.content)
+        else observable = of(content)
+
+        subscription = observable
+          .pipe(distinctUntilChanged())
+          .subscribe(raw => {
+            if (placed) {
+              this.remove()
+            }
+
+            content = raw
+            if (content) nodes = renderer.createElementsFromRaw(content)
+            else nodes = []
+          })
+      }
+    },
+    placeIn(position) {
+      if (placed && position === currentPosition) return
+      currentPosition = position
+
+      if (placed) this.remove()
+
+      let cursor = currentPosition
+      for (const node of nodes) {
+        renderer.place(node, cursor)
+        cursor = {
+          parent: cursor.parent,
+          previous: cursor,
+          lastElement: node,
+        }
+      }
+      placed = true
+    },
+    remove() {
+      if (placed) return
+      assert(
+        currentPosition,
+        "Unable to remove elements when current position is unavailable",
+      )
+      for (const node of nodes) {
+        renderer.remove(node, currentPosition.parent)
+      }
+      placed = false
+    },
   }
 }

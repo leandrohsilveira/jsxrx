@@ -25,6 +25,24 @@ export class DOMRenderer {
   }
 
   /**
+   * @param {string} raw
+   */
+  createElementsFromRaw(raw) {
+    const element = this.createElement("template")
+
+    element.insertAdjacentHTML("beforeend", raw.trim())
+
+    /** @type {*[]} */
+    const nodes = []
+
+    for (const node of element.childNodes) {
+      nodes.push(node)
+    }
+
+    return nodes
+  }
+
+  /**
    * @param {string} text
    * @param {Text} node
    */

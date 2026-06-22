@@ -95,19 +95,15 @@ export type Properties<T> = {
 }
 
 export type InputSpread<P> = {
-  [K in keyof P]-?: P[K] extends Ref<infer V>
-    ? Ref<V>
-    : P[K] extends Observable<infer V>
-      ? Observable<V>
-      : Observable<P[K]>
+  [K in keyof P]-?: P[K] extends Observable<infer V>
+    ? Observable<V>
+    : Observable<P[K]>
 }
 
 export type InputTake<P> = {
-  [K in keyof P as `${K}$`]-?: P[K] extends Ref<infer V>
-    ? Ref<V>
-    : P[K] extends Observable<infer V>
-      ? Observable<V>
-      : Observable<P[K]>
+  [K in keyof P as `${K}$`]-?: P[K] extends Observable<infer V>
+    ? Observable<V>
+    : Observable<P[K]>
 }
 
 export type PropsWithChildren<T = {}> = T & {
@@ -167,12 +163,23 @@ export type IRenderNode =
   | IRenderComponentNode
   | IRenderFragmentNode
   | IRenderSuspenseNode
+  | IRenderRawHtmlNode
 
 export interface IRenderElementNode extends RenderBase {
   type: (typeof VDOMType)["ELEMENT"]
   tag: string
   props: Record<string, any>
   children: ElementNode
+}
+
+export interface IRenderRawHtmlNode extends RenderBase {
+  type: (typeof VDOMType)["RAW_HTML"]
+  content:
+    | string
+    | Observable<string | null | undefined>
+    | Promise<string | null | undefined>
+    | null
+    | undefined
 }
 
 export interface IRenderComponentNode extends RenderBase {
@@ -200,6 +207,7 @@ export type IRenderText = string | number | bigint | boolean
 export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
   createTextNode(text: string): TextNode
   createElement(tag: string): ElementNode
+  createElementsFromRaw(raw: string): (ElementNode | TextNode)[]
   setText(text: string, node: TextNode): void
   setProperty(element: ElementNode, name: string, value: unknown): void
   listen(element: ElementNode, name: string, listener: () => void): () => void
