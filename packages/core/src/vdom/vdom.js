@@ -808,6 +808,7 @@ function createObservableNode(renderer, parentId, input$, instance) {
       return subscription
     },
     update(next) {
+      assert(next, "observable node received null instead of an observable")
       subject$.next(next)
     },
     placeIn(position) {
@@ -832,14 +833,15 @@ function createObservableNode(renderer, parentId, input$, instance) {
  * @template E
  * @param {IRenderer<T, E>} renderer
  * @param {IRenderComponentNode} node
- * @param {ComponentInstance} instance
+ * @param {ComponentInstance} upstream
  * @returns {VNodeComponent<T, E>}
  */
-function createComponentNode(renderer, node, instance) {
+function createComponentNode(renderer, node, upstream) {
   /** @type {VNode<T, E> | null} */
   let content = null
   const props$ = new BehaviorSubject(node.props)
   const mounted$ = new BehaviorSubject(false)
+  const instance = downstream()
   const input = new Input(props$, instance)
   let subscription = new Subscription()
   /** @type {ElementPosition<T, E> | null} */
@@ -872,7 +874,7 @@ function createComponentNode(renderer, node, instance) {
         unmounted$: mounted$.pipe(map(mounted => !mounted)),
       })
 
-      content = createNode(renderer, node.id, render, downstream())
+      content = createNode(renderer, node.id, render, instance)
 
       subscription.add(content.mount())
       subscription.add(() => {
@@ -905,7 +907,7 @@ function createComponentNode(renderer, node, instance) {
           unmounted$: mounted$.pipe(map(mounted => !mounted)),
         })
 
-        content = createNode(renderer, nextNode.id, render, downstream())
+        content = createNode(renderer, nextNode.id, render, instance)
 
         subscription.add(content.mount())
 
@@ -943,12 +945,12 @@ function createComponentNode(renderer, node, instance) {
    */
   function downstream() {
     assert(
-      instance.context instanceof ContextMap,
+      upstream.context instanceof ContextMap,
       "component instance.context must be instance of ContextMap!",
     )
     return {
-      suspension: instance.suspension,
-      context: instance.context.downstream(),
+      suspension: upstream.suspension,
+      context: upstream.context.downstream(),
     }
   }
 }
