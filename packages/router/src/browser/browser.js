@@ -8,10 +8,13 @@ import {
   debounceTime,
   distinctUntilChanged,
   fromEvent,
+  isObservable,
   map,
   merge,
+  of,
   startWith,
   Subject,
+  switchMap,
 } from "rxjs"
 import { matchUrl, parsePathnameParams } from "../utils.js"
 import { jsx } from "@jsxrx/core/jsx-runtime"
@@ -122,10 +125,10 @@ export function RouteComponent(props$, { context }) {
         return matched$.pipe(
           distinctUntilChanged(),
           debounceTime(1),
-          map(match => {
-            if (!match) return null
+          switchMap(match => {
+            if (!match) return of(null)
 
-            const props = resolveProps(
+            const props$ = resolveProps(
               routes,
               resolverInput,
               routes.children
@@ -140,8 +143,12 @@ export function RouteComponent(props$, { context }) {
                 : null,
             )
 
-            // @ts-expect-error standard jsx function does not have this id optmization
-            return jsx(`route:${routes.id}`, routes.component, props)
+            return props$.pipe(
+              map(props =>
+                // @ts-expect-error standard jsx function does not have this id optmization
+                jsx(`route:${routes.id}`, routes.component, props),
+              ),
+            )
           }),
         )
       }
@@ -191,18 +198,23 @@ export function RouteComponent(props$, { context }) {
  * @param {RouteResolverInput} input
  * @param {JsxRx.ElementNode} children
  *
- * @returns {Record<string, *>}
+ * @returns {Observable<Record<string, *>>}
  */
 function resolveProps(route, input, children) {
   if ("resolve" in route) {
-    return {
-      ...route.resolve(input),
-      children,
-    }
+    const resolver$ = isObservable(route.resolve)
+      ? route.resolve
+      : of(route.resolve)
+    return resolver$.pipe(
+      map(resolve => ({
+        ...resolve(input),
+        children,
+      })),
+    )
   }
-  return {
+  return of({
     children,
-  }
+  })
 }
 
 const distinctUrlChanged = distinctUntilChanged(

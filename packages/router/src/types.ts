@@ -28,13 +28,18 @@ export type RouteWithChildrenOptions = {
 }
 
 export type ResolvedProps<Props> = Properties<Omit<Props, "children">>
+export type RouteResolver<Props, Path extends string, Query extends string> = (
+  input: RouteResolverInput<Path, Query>,
+) => ResolvedProps<Props>
 
 export type RouteOptions<Props, Path extends string, Query extends string> = {
   params?: {
     path?: Path[]
     query?: Query[]
   }
-  resolve(input: RouteResolverInput<Path, Query>): ResolvedProps<Props>
+  resolve:
+    | RouteResolver<Props, Path, Query>
+    | Observable<RouteResolver<Props, Path, Query>>
   children?: Props extends WithChildren ? Routes : never
 }
 
