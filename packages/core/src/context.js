@@ -100,9 +100,11 @@ export class ContextMap {
    * @returns {Observable<T>}
    */
   optional(context) {
-    return this.#upstream$.pipe(
-      switchMap(
-        contexts => contexts[context.symbol] ?? of(context.initialValue),
+    return toActivityAware(attach =>
+      this.#upstream$.pipe(
+        switchMap(contexts =>
+          attach(contexts[context.symbol] ?? of(context.initialValue)),
+        ),
       ),
     )
   }
