@@ -4,10 +4,11 @@
  * @import { VChildren, VNode, VNodeComponent, VNodeObservable, VNodeWithChildren, VRoot } from "./types.js"
  */
 
-import { asArray, assert, shallowDiff } from "@jsxrx/utils"
+import { asArray, assert, shallowComparator, shallowDiff } from "@jsxrx/utils"
 import {
   BehaviorSubject,
   combineLatest,
+  debounce,
   debounceTime,
   distinctUntilChanged,
   filter,
@@ -25,6 +26,7 @@ import {
 import { VDOMType } from "../constants/vdom.js"
 import { ContextMap } from "../context.js"
 import {
+  combine,
   Input,
   isActivityAwareObservable,
   isRef,
@@ -1164,18 +1166,25 @@ function createSuspensionContext() {
 function createRawHtmlNode(renderer, node, instance) {
   /** @type {string | null | undefined} */
   let content = null
+
   /** @type {(T | E)[]} */
-  let nodes = []
+  let placedNodes = []
+
+  let nodes$ = new BehaviorSubject(placedNodes)
+
   /** @type {Subscription | null} */
-  let subscription = null
+  let contentSubscription = null
 
   let placed = false
 
   /** @type {ElementPosition<T, E> | null} */
   let currentPosition = null
 
-  /** @type {Subject<boolean> | null} */
-  let pending$ = null
+  /** @type {Subject<boolean>} */
+  const pending$ = new BehaviorSubject(true)
+
+  /** @type {Subject<ElementPosition<T, E> | null>} */
+  const placement$ = new Subject()
 
   return {
     get key() {
@@ -1185,24 +1194,14 @@ function createRawHtmlNode(renderer, node, instance) {
       return placed
     },
     get lastElement() {
-      return nodes.at(-1) ?? null
+      return placedNodes.at(-1) ?? null
     },
     type: VDOMType.RAW_HTML,
     name: "rawHtml",
     mount() {
-      let observable
-      pending$ = new BehaviorSubject(true)
+      const subscription = new Subscription()
 
-      if (isObservable(node.content)) observable = node.content
-      else if (node.content instanceof Promise) observable = from(node.content)
-      else observable = of(node.content)
-
-      subscription = observable.pipe(distinctUntilChanged()).subscribe(raw => {
-        pending$?.next(false)
-        content = raw
-        if (content) nodes = renderer.createElementsFromRaw(content)
-        else nodes = []
-      })
+      contentSubscription = subscribeContent(node)
 
       subscription.add(
         pending$
@@ -1213,64 +1212,98 @@ function createRawHtmlNode(renderer, node, instance) {
           }),
       )
 
+      subscription.add(
+        combine({ position: placement$, nodes: nodes$ })
+          .pipe(
+            debounce(() => pending$.pipe(filter(pending => !pending))),
+            debounceTime(1),
+            distinctUntilChanged(shallowComparator),
+          )
+          .subscribe(({ position, nodes }) => {
+            if (position === null) removeNodes(nodes)
+            else placeNodes(position, nodes)
+          }),
+      )
+
       return new Subscription(() => {
         pending$?.complete()
         instance.suspension.complete()
-        subscription?.unsubscribe()
-        nodes = []
+        contentSubscription?.unsubscribe()
+        nodes$.complete()
+        subscription.unsubscribe()
         content = null
       })
     },
     update(newNode) {
       if (newNode.id !== node.id || newNode.content !== node.content) {
-        subscription?.unsubscribe()
+        contentSubscription?.unsubscribe()
 
-        let observable
-
-        if (isObservable(node.content)) observable = node.content
-        if (node.content instanceof Promise) observable = from(node.content)
-        else observable = of(content)
-
-        subscription = observable
-          .pipe(distinctUntilChanged())
-          .subscribe(raw => {
-            if (placed) {
-              this.remove()
-            }
-
-            content = raw
-            if (content) nodes = renderer.createElementsFromRaw(content)
-            else nodes = []
-          })
+        node = newNode
+        contentSubscription = subscribeContent(newNode)
       }
     },
     placeIn(position) {
-      if (placed && position === currentPosition) return
-      currentPosition = position
-
-      if (placed) this.remove()
-
-      let cursor = currentPosition
-      for (const node of nodes) {
-        renderer.place(node, cursor)
-        cursor = {
-          parent: cursor.parent,
-          previous: cursor,
-          lastElement: node,
-        }
-      }
-      placed = true
+      placement$.next(position)
     },
     remove() {
-      if (placed) return
-      assert(
-        currentPosition,
-        "Unable to remove elements when current position is unavailable",
-      )
-      for (const node of nodes) {
-        renderer.remove(node, currentPosition.parent)
-      }
-      placed = false
+      placement$.next(null)
     },
+  }
+
+  /**
+   * @param {ElementPosition<T, E>} position
+   * @param {(T | E)[]} nodes
+   */
+  function placeNodes(position, nodes) {
+    if (placed && position === currentPosition) return
+    currentPosition = position
+
+    if (placed) removeNodes(placedNodes)
+
+    let cursor = currentPosition
+    for (const node of nodes) {
+      renderer.place(node, cursor)
+      cursor = {
+        parent: cursor.parent,
+        previous: cursor,
+        lastElement: node,
+      }
+    }
+    placedNodes = nodes
+    placed = true
+  }
+
+  /**
+   * @param {(T | E)[]} nodes
+   */
+  function removeNodes(nodes) {
+    if (placed) return
+    assert(
+      currentPosition,
+      "Unable to remove elements when current position is unavailable",
+    )
+    for (const node of nodes) {
+      renderer.remove(node, currentPosition.parent)
+    }
+    placedNodes = []
+    placed = false
+  }
+
+  /**
+   * @param {IRenderRawHtmlNode} node
+   */
+  function subscribeContent(node) {
+    let observable
+
+    if (isObservable(node.content)) observable = node.content
+    else if (node.content instanceof Promise) observable = from(node.content)
+    else observable = of(node.content)
+
+    return observable.pipe(distinctUntilChanged()).subscribe(raw => {
+      content = raw
+      if (content) nodes$.next(renderer.createElementsFromRaw(content))
+      else nodes$.next([])
+      pending$?.next(false)
+    })
   }
 }
