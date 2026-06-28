@@ -219,10 +219,6 @@ export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
     node: TextNode | ElementNode,
     position: ElementPosition<TextNode, ElementNode>,
   ): void
-  move(
-    node: TextNode | ElementNode,
-    position: ElementPosition<TextNode, ElementNode>,
-  )
   remove(node: TextNode | ElementNode, target: ElementNode): void
   hasChild(parent: ElementNode, child: TextNode | ElementNode): boolean
   subscribe(): Subscription

@@ -112,14 +112,6 @@ export class DOMRenderer {
 
   /**
    * @param {Text | Element} node
-   * @param {ElementPosition<Text, Element>} position
-   */
-  move(node, position) {
-    this.place(node, position)
-  }
-
-  /**
-   * @param {Text | Element} node
    * @param {Element} parent
    */
   remove(node, parent) {

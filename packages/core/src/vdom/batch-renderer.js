@@ -112,18 +112,6 @@ export class BatchRenderer {
 
   /**
    * @param {T | E} node
-   * @param {ElementPosition<T, E>} position
-   */
-  move(node, position) {
-    this.#publisher$.next({
-      event: VRenderEventType.MOVE,
-      payload: node,
-      position,
-    })
-  }
-
-  /**
-   * @param {T | E} node
    * @param {E} target
    */
   remove(node, target) {
