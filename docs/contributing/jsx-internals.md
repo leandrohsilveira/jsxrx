@@ -1,4 +1,10 @@
-# JSX in Depth
+# JSX Internals
+
+This document covers the internal JSX pipeline of JsxRx — from transpilation through runtime functions to VDOM node types. It is intended for developers who want to contribute to JsxRx or understand its internals. Reading this is not necessary for using JsxRx in applications.
+
+For the user-facing guide, see the [Getting Started guide](../guide/01-getting-started.md) which covers the JSX configuration from a user perspective.
+
+---
 
 JsxRx embraces JSX as its primary templating language. Unlike React, which uses JSX to build a general-purpose virtual DOM, JsxRx treats JSX as a **compile-to-VDOM** mechanism designed specifically for reactive, RxJS-driven applications. This guide explores every layer of the JSX pipeline — from the TypeScript configuration that activates it, through the runtime functions that interpret it, to the VDOM nodes and compiler optimizations that make it efficient.
 
