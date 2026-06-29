@@ -152,7 +152,7 @@ export function App() {
       <AddTodo onAdd={addTodo} />
 
       <TodoList
-        todos$={filteredTodos$}
+        todos={filteredTodos$}
         onToggle={toggleTodo}
         onDelete={deleteTodo}
       />
@@ -257,7 +257,7 @@ import { TodoItem } from "./TodoItem"
 import type { Todo } from "../types"
 
 type TodoListProps = {
-  todos$: Observable<Todo[]>
+  todos: Observable<Todo[]>
   onToggle: (id: string) => void
   onDelete: (id: string) => void
 }

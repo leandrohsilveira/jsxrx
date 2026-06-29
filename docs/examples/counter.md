@@ -219,7 +219,7 @@ component — only the specific text node is patched.
       if (count > 0) return <span style={{ color: "green" }}>Positive</span>
       if (count < 0) return <span style={{ color: "red" }}>Negative</span>
       return <span style={{ color: "gray" }}>Zero</span>
-    })
+    }),
   )
 }
 ```
@@ -265,13 +265,13 @@ see the counter in action.
 
 ## Key Takeaways
 
-| Concept              | React                          | JsxRx                                          |
-|----------------------|--------------------------------|-------------------------------------------------|
-| State creation       | `useState(0)` → `[value, set]` | `state(0)` → `{ value, set }` (is Observable)  |
-| Derived state        | `useMemo(() => ..., [deps])`   | `source$.pipe(map(...))`                        |
-| Conditional render   | Ternary inside JSX             | `source$.pipe(map(...))` returns JSX elements   |
-| Component re-runs    | Every state change             | Once — only subscribed DOM nodes update         |
-| Dependency arrays    | Manual (stale closure risk)    | Automatic (RxJS tracks the graph)               |
+| Concept            | React                          | JsxRx                                         |
+| ------------------ | ------------------------------ | --------------------------------------------- |
+| State creation     | `useState(0)` → `[value, set]` | `state(0)` → `{ value, set }` (is Observable) |
+| Derived state      | `useMemo(() => ..., [deps])`   | `source$.pipe(map(...))`                      |
+| Conditional render | Ternary inside JSX             | `source$.pipe(map(...))` returns JSX elements |
+| Component re-runs  | Every state change             | Once — only subscribed DOM nodes update       |
+| Dependency arrays  | Manual (stale closure risk)    | Automatic (RxJS tracks the graph)             |
 
 ---
 
