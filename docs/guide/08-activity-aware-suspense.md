@@ -224,8 +224,9 @@ function DataLoader() {
 `activity()` returns:
 
 - `pending$` — `Observable<boolean>`, starts as `true` by default.
-- `start` — RxJS `tap` operator that sets pending to `true` on subscription.
-- `complete` — RxJS `tap` operator that sets pending to `false` on next/error/complete.
+- `start()` — Returns an RxJS `tap` operator that sets pending to `true` on subscription.
+- `complete()` — Returns an RxJS `tap` operator that sets pending to `false` on next/error/complete.
+- `pipe(operator)` — Composes `start()`, the given operator, and `complete()` into a single operator.
 - `toObservable(obs)` — Wraps an observable as an `ActivityAwareObservable` tracked by this tracker.
 
 **Choosing between them:**

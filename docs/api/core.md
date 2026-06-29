@@ -138,7 +138,9 @@ Type guard that checks whether a value is an instance of `ElementRef` (i.e., cre
 import { isRef } from "@jsxrx/core"
 
 if (isRef(someValue)) {
-  someValue.current.subscribe(el => { /* ... */ })
+  someValue.current.subscribe(el => {
+    /* ... */
+  })
 }
 ```
 
@@ -184,8 +186,10 @@ function Greeting(props$) {
 
   return combine({ name: name$, age: age$ }).pipe(
     map(({ name, age }) => (
-      <div>Hello {name}, you are {age} years old.</div>
-    ))
+      <div>
+        Hello {name}, you are {age} years old.
+      </div>
+    )),
   )
 }
 ```
@@ -206,9 +210,7 @@ Like `Props.take`, but returns an `Observable` of the full props object where ev
 import { Props } from "@jsxrx/core"
 
 function Wrapper(props$) {
-  return Props.spread(props$).pipe(
-    map(props => <div {...props} />)
-  )
+  return Props.spread(props$).pipe(map(props => <div {...props} />))
 }
 ```
 
@@ -285,7 +287,7 @@ function App() {
 // Component<PropsWithChildren<SuspenseProps>>
 interface SuspenseProps {
   fallback: ElementNode
-  tolerance?: number    // debounce time in ms before swapping to fallback
+  tolerance?: number // debounce time in ms before swapping to fallback
   suspended?: boolean | Observable<boolean>
 }
 ```
@@ -327,7 +329,12 @@ const icon = rawHtml("chart-icon", `<svg viewBox="0 0 24 24">...</svg>`)
 const widget = rawHtml("live-widget", widgetHtml$, "widget-key")
 
 function Dashboard() {
-  return <div>{icon}{widget}</div>
+  return (
+    <div>
+      {icon}
+      {widget}
+    </div>
+  )
 }
 ```
 
@@ -356,10 +363,12 @@ const config$ = defer(someStream$)
 const view$ = combine({ name: name$, age: age$, config: config$ }).pipe(
   map(({ name, age, config }) => (
     <div>
-      <h1>{name}, {age}</h1>
+      <h1>
+        {name}, {age}
+      </h1>
       <ConfigRenderer stream={config} />
     </div>
-  ))
+  )),
 )
 ```
 
@@ -384,7 +393,9 @@ import { pending } from "@jsxrx/core"
 import { of } from "rxjs"
 import { map } from "rxjs/operators"
 
-const data$ = fetchData().pipe(map(data => ({ state: "success", value: data, error: null })))
+const data$ = fetchData().pipe(
+  map(data => ({ state: "success", value: data, error: null })),
+)
 const loading$ = pending(data$)
 
 loading$.subscribe(isLoading => {
@@ -399,13 +410,14 @@ loading$.subscribe(isLoading => {
 ```ts
 activity(): {
   pending$: Observable<boolean>
-  start: MonoTypeOperatorFunction<unknown>    // tap operator
-  complete: MonoTypeOperatorFunction<unknown> // tap operator
+  start<T>(): MonoTypeOperatorFunction<T>    // tap operator factory
+  complete<T>(): MonoTypeOperatorFunction<T> // tap operator factory
+  pipe<T, R>(operator: OperatorFunction<T, R>): OperatorFunction<T, R>
   toObservable<T>(observable: Observable<T>): Observable<T>
 }
 ```
 
-Creates an activity tracker. Returns a `pending$` stream that starts as `true` and transitions to `false` on completion or error. The `start` and `complete` operators can be piped into observable chains to mark activity boundaries. `toObservable` wraps an observable in an `ActivityAwareObservable` that exposes the tracker's `pending$`.
+Creates an activity tracker. Returns a `pending$` stream that starts as `true` and transitions to `false` on completion or error. `start()` and `complete()` are factory functions that return RxJS `tap` operators, which can be piped into observable chains to mark activity boundaries. `pipe(operator)` is a convenience that composes `start()`, the given operator, and `complete()` into a single operator. `toObservable` wraps an observable in an `ActivityAwareObservable` that exposes the tracker's `pending$`.
 
 ```tsx
 import { activity } from "@jsxrx/core"
@@ -413,9 +425,15 @@ import { ajax } from "rxjs/ajax"
 
 const tracker = activity()
 
-const data$ = ajax.getJSON("/api/users").pipe(
-  tracker.start,
-  tracker.complete,
+const data$ = of(null).pipe(
+  tracker.start(),
+  switchMap(() => ajax.getJSON("/api/users"))
+  tracker.complete()
+)
+
+// Equivalent using the pipe() convenience:
+const data$ = of(null).pipe(
+  tracker.pipe(ajax.getJSON("/api/users"))
 )
 
 const activityAware$ = tracker.toObservable(data$)
@@ -439,9 +457,7 @@ Wraps an observable chain to become activity-aware. The `attacher` callback rece
 import { toActivityAware } from "@jsxrx/core"
 
 const aware$ = toActivityAware(attach =>
-  someSource$.pipe(
-    switchMap(value => attach(fetchDetails(value))),
-  )
+  someSource$.pipe(switchMap(value => attach(fetchDetails(value)))),
 )
 
 // aware$.pending$ exists and tracks all attached observables
@@ -488,6 +504,7 @@ class Input<T> extends ObservableDelegate<T> {
 The component input observable — this is what the `props$` parameter of every component actually is. `Input` extends `ObservableDelegate` with component lifecycle and prop destructuring capabilities.
 
 **Key features:**
+
 - Debounces prop changes by 1ms and deduplicates using `compareProps`
 - Exposes `unmounted$` for cleanup (completes on unmount)
 - `context` provides access to the component's context scope
@@ -664,11 +681,15 @@ import { state, variants } from "@jsxrx/core"
 type ButtonVariant = "primary" | "danger" | "ghost"
 const variant$ = state<ButtonVariant>("primary")
 
-const buttonClass$ = variants(variant$, {
-  primary: "bg-blue-500 text-white",
-  danger: "bg-red-500 text-white",
-  ghost: "bg-transparent text-gray-700",
-}, "bg-gray-200 text-black") // fallback
+const buttonClass$ = variants(
+  variant$,
+  {
+    primary: "bg-blue-500 text-white",
+    danger: "bg-red-500 text-white",
+    ghost: "bg-transparent text-gray-700",
+  },
+  "bg-gray-200 text-black",
+) // fallback
 
 // Combined with classes:
 const className$ = classes(buttonClass$, "rounded-lg", "px-4 py-2")
@@ -768,6 +789,7 @@ createDebugLogger(groups?: ("publishEvents" | "batchEvents")[]): Logger
 Creates a debug logger with specified event groups enabled. Defaults to both groups if no argument is passed. The returned `Logger` logs to `console.debug` with `[BATCH]` prefix.
 
 **Available groups:**
+
 - `"publishEvents"` — logs `publishEvent` calls
 - `"batchEvents"` — logs `beginBatch`, `completeBatch`, `placeEvent`, `removeEvent`
 
@@ -791,7 +813,13 @@ The following classes implement the `IRenderNode` interface from the type defini
 
 ```ts
 class RenderElementNode implements IRenderElementNode {
-  constructor(id: string, tag: string, props: Record<string, any>, children: ElementNode, key?: any)
+  constructor(
+    id: string,
+    tag: string,
+    props: Record<string, any>,
+    children: ElementNode,
+    key?: any,
+  )
   type: VDOMType.ELEMENT
   id: string
   tag: string
@@ -810,12 +838,17 @@ Represents an HTML element in the VDOM tree. Props are compared via `shallowComp
 
 ```ts
 class RenderComponentNode implements IRenderComponentNode {
-  constructor(id: string, component: Component<any>, props: Record<string, any>, key?: any)
+  constructor(
+    id: string,
+    component: Component<any>,
+    props: Record<string, any>,
+    key?: any,
+  )
   type: VDOMType.COMPONENT
   id: string
   component: Component<any>
   props: Record<string, any>
-  name: string    // from component.displayName ?? component.name
+  name: string // from component.displayName ?? component.name
   key: any
   compareTo(node: IRenderNode): boolean
 }
@@ -846,7 +879,12 @@ Represents a JSX fragment (`<>...</>`) in the VDOM tree.
 
 ```ts
 class RenderSuspenseNode implements IRenderSuspenseNode {
-  constructor(id: string, props: SuspenseProps, children: ElementNode, key?: any)
+  constructor(
+    id: string,
+    props: SuspenseProps,
+    children: ElementNode,
+    key?: any,
+  )
   type: VDOMType.SUSPENSE
   fallback: ElementNode
   children: ElementNode
@@ -866,7 +904,12 @@ Represents a Suspense boundary in the VDOM tree.
 class RenderRawHtmlNode implements IRenderRawHtmlNode {
   constructor(id: string, content: IRenderRawHtmlNode["content"], key?: any)
   type: VDOMType.RAW_HTML
-  content: string | Observable<string | null | undefined> | Promise<string | null | undefined> | null | undefined
+  content:
+    | string
+    | Observable<string | null | undefined>
+    | Promise<string | null | undefined>
+    | null
+    | undefined
   key: any
   compareTo(node: IRenderNode): boolean
 }
@@ -979,7 +1022,9 @@ JSX factory for the automatic runtime with multiple children. The transpiler cho
 // Transpiled from: <div><span>A</span><span>B</span></div>
 // Becomes:
 import { jsxs } from "@jsxrx/core/jsx-runtime"
-jsxs("div", { children: [jsx("span", { children: "A" }), jsx("span", { children: "B" })] })
+jsxs("div", {
+  children: [jsx("span", { children: "A" }), jsx("span", { children: "B" })],
+})
 ```
 
 ### `Fragment`
@@ -1031,76 +1076,76 @@ interface JSXSource {
 
 ### Lifecycle & Component Types
 
-| Type | Description |
-|------|-------------|
-| `Component<P>` | `(props: Observable<P>, lifecycle: Lifecycle) => ElementNode` with optional `displayName` |
-| `ComponentType<P>` | Alias for `Component<P>` |
-| `Lifecycle` | `{ context: IContextMap; subscription: Subscription; mounted$: Observable<boolean>; unmounted$: Observable<boolean> }` |
-| `ComponentInstance` | `{ context: IContextMap; suspension: SuspensionController }` |
+| Type                | Description                                                                                                            |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `Component<P>`      | `(props: Observable<P>, lifecycle: Lifecycle) => ElementNode` with optional `displayName`                              |
+| `ComponentType<P>`  | Alias for `Component<P>`                                                                                               |
+| `Lifecycle`         | `{ context: IContextMap; subscription: Subscription; mounted$: Observable<boolean>; unmounted$: Observable<boolean> }` |
+| `ComponentInstance` | `{ context: IContextMap; suspension: SuspensionController }`                                                           |
 
 ### State & Ref Types
 
-| Type | Description |
-|------|-------------|
-| `IState<T>` | `Observable<T>` with `.value: T` and `.set(value: T): void` |
-| `Ref<T>` | `{ kind: "ref"; current: SubjectLike<T \| null> }` |
-| `IDeferred<T>` | `{ kind: "stream"; value$: Observable<T> }` |
-| `Emitter<T extends Fn>` | `{ emit: (...args: Parameters<T>) => Promise<ReturnType<T>> }` |
+| Type                            | Description                                                                 |
+| ------------------------------- | --------------------------------------------------------------------------- |
+| `IState<T>`                     | `Observable<T>` with `.value: T` and `.set(value: T): void`                 |
+| `Ref<T>`                        | `{ kind: "ref"; current: SubjectLike<T \| null> }`                          |
+| `IDeferred<T>`                  | `{ kind: "stream"; value$: Observable<T> }`                                 |
+| `Emitter<T extends Fn>`         | `{ emit: (...args: Parameters<T>) => Promise<ReturnType<T>> }`              |
 | `OptionalEmitter<T extends Fn>` | `{ emit: (...args: Parameters<T>) => Promise<ReturnType<T> \| undefined> }` |
 
 ### Async & Pending Types
 
-| Type | Description |
-|------|-------------|
-| `AsyncState<T, E>` | `{ kind: "async"; pending$: Observable<boolean>; state$: Observable<PendingState<T>>; value$: Observable<T>; error$: Observable<E> }` |
-| `PendingState<T>` | `{ state: "idle" \| "pending"; value: null; error: null } \| { state: "success"; value: T; error: null } \| { state: "error"; value: null; error: unknown }` |
+| Type               | Description                                                                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AsyncState<T, E>` | `{ kind: "async"; pending$: Observable<boolean>; state$: Observable<PendingState<T>>; value$: Observable<T>; error$: Observable<E> }`                        |
+| `PendingState<T>`  | `{ state: "idle" \| "pending"; value: null; error: null } \| { state: "success"; value: T; error: null } \| { state: "error"; value: null; error: unknown }` |
 
 ### Context Types
 
-| Type | Description |
-|------|-------------|
-| `IContext<T>` | `{ initialValue: T; create(): BehaviorSubject<T> }` |
+| Type          | Description                                                                                                                                                 |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `IContext<T>` | `{ initialValue: T; create(): BehaviorSubject<T> }`                                                                                                         |
 | `IContextMap` | `{ set<T>(ctx: IContext<T>, value$: Observable<T>): void; require<T>(ctx: T): Observable<T["initialValue"]>; optional<T>(ctx: Context<T>): Observable<T> }` |
 
 ### Suspension Types
 
-| Type | Description |
-|------|-------------|
+| Type                   | Description                                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
 | `SuspensionController` | `{ suspend(): void; resume(): void; downstream(): SuspensionController; complete(): void }` |
-| `SuspensionContext` | `{ suspended$: Observable<boolean>; downstream(): SuspensionController; complete(): void }` |
+| `SuspensionContext`    | `{ suspended$: Observable<boolean>; downstream(): SuspensionController; complete(): void }` |
 
 ### VDOM & Rendering Types
 
-| Type | Description |
-|------|-------------|
-| `ElementNode` | `Observable<ElementNode> \| IRenderNode \| IRenderText \| ElementNode[] \| null \| undefined` |
-| `IRenderText` | `string \| number \| bigint \| boolean` |
-| `IRenderNode` | Union of all render node interfaces |
-| `IRenderElementNode` | `{ type: "ELEMENT"; tag: string; props: Record<string, any>; children: ElementNode; ... }` |
-| `IRenderComponentNode` | `{ type: "COMPONENT"; component: Component<any>; props: Record<string, any>; name: string; ... }` |
-| `IRenderFragmentNode` | `{ type: "FRAGMENT"; children: ElementNode; ... }` |
-| `IRenderSuspenseNode` | `{ type: "SUSPENSE"; fallback: ElementNode; tolerance?: number; suspended?: boolean; ... }` |
-| `IRenderRawHtmlNode` | `{ type: "RAW_HTML"; content: string \| Observable<...> \| Promise<...> \| null \| undefined; ... }` |
-| `IRenderer<T, E>` | Renderer interface with `createElement`, `createTextNode`, `setProperty`, `listen`, `place`, `move`, `remove`, etc. |
-| `VRoot` | `{ mount(element: ElementNode): Subscription }` |
-| `VRenderEvent<T, E>` | `{ event: IVRenderEventType; payload: T \| E; position: ElementPosition<T, E> }` |
-| `VNode<T, E, N>` | Internal VDOM node with `mount()`, `update()`, `placeIn()`, `remove()` |
-| `ElementPosition<T, E>` | `{ parent: E; previous?: ElementPosition<T, E>; lastElement?: T \| E }` |
+| Type                    | Description                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `ElementNode`           | `Observable<ElementNode> \| IRenderNode \| IRenderText \| ElementNode[] \| null \| undefined`                       |
+| `IRenderText`           | `string \| number \| bigint \| boolean`                                                                             |
+| `IRenderNode`           | Union of all render node interfaces                                                                                 |
+| `IRenderElementNode`    | `{ type: "ELEMENT"; tag: string; props: Record<string, any>; children: ElementNode; ... }`                          |
+| `IRenderComponentNode`  | `{ type: "COMPONENT"; component: Component<any>; props: Record<string, any>; name: string; ... }`                   |
+| `IRenderFragmentNode`   | `{ type: "FRAGMENT"; children: ElementNode; ... }`                                                                  |
+| `IRenderSuspenseNode`   | `{ type: "SUSPENSE"; fallback: ElementNode; tolerance?: number; suspended?: boolean; ... }`                         |
+| `IRenderRawHtmlNode`    | `{ type: "RAW_HTML"; content: string \| Observable<...> \| Promise<...> \| null \| undefined; ... }`                |
+| `IRenderer<T, E>`       | Renderer interface with `createElement`, `createTextNode`, `setProperty`, `listen`, `place`, `move`, `remove`, etc. |
+| `VRoot`                 | `{ mount(element: ElementNode): Subscription }`                                                                     |
+| `VRenderEvent<T, E>`    | `{ event: IVRenderEventType; payload: T \| E; position: ElementPosition<T, E> }`                                    |
+| `VNode<T, E, N>`        | Internal VDOM node with `mount()`, `update()`, `placeIn()`, `remove()`                                              |
+| `ElementPosition<T, E>` | `{ parent: E; previous?: ElementPosition<T, E>; lastElement?: T \| E }`                                             |
 
 ### Prop Utility Types
 
-| Type | Description |
-|------|-------------|
-| `Properties<T>` | Maps each key `K` to `Ref<T[K]> \| T[K] \| Observable<T[K]>` |
-| `InputTake<P>` | Maps each key `K` in `P` to `Observable<V>` with a `$` suffix (e.g., `name$`) |
-| `InputSpread<P>` | Maps each key `K` in `P` to `Observable<V>` without suffix |
-| `CombineOutput<T>` | Unwraps observables to values in `T`, but preserves observables for `IDeferred` values |
-| `PropsWithChildren<T>` | `T & { children?: ElementNode }` |
-| `PropsWithKey<T>` | `T & { key?: Key \| null }` |
-| `PropsWithKeyAndChildren<T>` | `PropsWithChildren<T> & PropsWithKey<T>` |
-| `WithClassName` | `{ className?: string }` |
-| `WithChildren` | `{ children?: ElementNode }` |
-| `ClassValue` | `clsx.ClassValue \| Observable<ClassValue>` (recursive) |
+| Type                         | Description                                                                            |
+| ---------------------------- | -------------------------------------------------------------------------------------- |
+| `Properties<T>`              | Maps each key `K` to `Ref<T[K]> \| T[K] \| Observable<T[K]>`                           |
+| `InputTake<P>`               | Maps each key `K` in `P` to `Observable<V>` with a `$` suffix (e.g., `name$`)          |
+| `InputSpread<P>`             | Maps each key `K` in `P` to `Observable<V>` without suffix                             |
+| `CombineOutput<T>`           | Unwraps observables to values in `T`, but preserves observables for `IDeferred` values |
+| `PropsWithChildren<T>`       | `T & { children?: ElementNode }`                                                       |
+| `PropsWithKey<T>`            | `T & { key?: Key \| null }`                                                            |
+| `PropsWithKeyAndChildren<T>` | `PropsWithChildren<T> & PropsWithKey<T>`                                               |
+| `WithClassName`              | `{ className?: string }`                                                               |
+| `WithChildren`               | `{ children?: ElementNode }`                                                           |
+| `ClassValue`                 | `clsx.ClassValue \| Observable<ClassValue>` (recursive)                                |
 
 ### Event Types
 
@@ -1114,12 +1159,12 @@ Full type definitions for all HTML and SVG intrinsic elements are available unde
 
 ## 13. Entry Points Summary
 
-| Entry Point | Description |
-|-------------|-------------|
-| `@jsxrx/core` | Main package — all core APIs |
-| `@jsxrx/core/dom` | DOM renderer (`createRoot`, `fromRefEvent`, `createTestingRenderer`) |
-| `@jsxrx/core/jsx-runtime` | Automatic JSX runtime (`jsx`, `jsxs`, `Fragment`, `JSX` namespace) |
-| `@jsxrx/core/jsx-dev-runtime` | Development JSX runtime (`jsxDEV` with source locations) |
+| Entry Point                   | Description                                                          |
+| ----------------------------- | -------------------------------------------------------------------- |
+| `@jsxrx/core`                 | Main package — all core APIs                                         |
+| `@jsxrx/core/dom`             | DOM renderer (`createRoot`, `fromRefEvent`, `createTestingRenderer`) |
+| `@jsxrx/core/jsx-runtime`     | Automatic JSX runtime (`jsx`, `jsxs`, `Fragment`, `JSX` namespace)   |
+| `@jsxrx/core/jsx-dev-runtime` | Development JSX runtime (`jsxDEV` with source locations)             |
 
 ---
 

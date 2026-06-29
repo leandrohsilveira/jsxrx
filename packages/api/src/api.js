@@ -90,7 +90,7 @@ export function createHttpClient({ baseUrl, defaultHeaders = {} }) {
         }
       )
 
-      const { start, complete, toObservable } = activity()
+      const { pipe, toObservable } = activity()
 
       return {
         send,
@@ -99,11 +99,12 @@ export function createHttpClient({ baseUrl, defaultHeaders = {} }) {
             input$.pipe(
               debounceTime(1),
               distinctUntilChanged(shallowComparator),
-              start,
-              switchMap(
-                input => /** @type {Observable<Output>} */ (from(send(input))),
+              pipe(
+                switchMap(
+                  input =>
+                    /** @type {Observable<Output>} */ (from(send(input))),
+                ),
               ),
-              complete,
               shareReplay({ bufferSize: 1, refCount: true }),
             ),
           )

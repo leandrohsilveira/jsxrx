@@ -89,28 +89,35 @@ export class ActivityAwareObservable extends Observable {
 
 ### 1.2 `activity()` — Imperative Tracker
 
-**Source file:** [`packages/core/src/observable.js`](../../packages/core/src/observable.js#L425-L448)
+**Source file:** [`packages/core/src/observable.js`](../../packages/core/src/observable.js#L428-L471)
 
 `activity()` creates a lightweight pending tracker backed by a `BehaviorSubject<boolean>`:
 
 ```js
-// packages/core/src/observable.js (lines 425-448)
+// packages/core/src/observable.js (lines 428-471)
 export function activity() {
   const pending$ = new BehaviorSubject(true)
   return {
     pending$: pending$.pipe(distinctUntilChanged()),
-    start: tap({
-      next: () => pending$.next(true),
-      error: () => pending$.next(false),
-      complete: () => pending$.next(false),
-    }),
-    complete: tap({
-      next: () => pending$.next(false),
-      error: () => pending$.next(false),
-      complete: () => pending$.next(false),
-    }),
+    start() {
+      return tap({
+        next: () => pending$.next(true),
+        error: () => pending$.next(false),
+        complete: () => pending$.next(false),
+      })
+    },
+    complete() {
+      return tap({
+        next: () => pending$.next(false),
+        error: () => pending$.next(false),
+        complete: () => pending$.next(false),
+      })
+    },
     toObservable(observable) {
       return new ActivityAwareObservable(observable, pending$)
+    },
+    pipe(operator) {
+      return pipe(this.start(), operator, this.complete())
     },
   }
 }
@@ -121,8 +128,9 @@ export function activity() {
 | Property       | Type                     | Description                                                     |
 |----------------|--------------------------|-----------------------------------------------------------------|
 | `pending$`     | `Observable<boolean>`    | Starts as `true`, emits `true` while active, `false` when idle. |
-| `start`        | RxJS `tap` operator      | Sets `pending$` to `true` on `next`.                            |
-| `complete`     | RxJS `tap` operator      | Sets `pending$` to `false` on `next`, `error`, or `complete`.   |
+| `start()`      | factory → RxJS `tap` operator | Sets `pending$` to `true` on `next`.                            |
+| `complete()`   | factory → RxJS `tap` operator | Sets `pending$` to `false` on `next`, `error`, or `complete`.   |
+| `pipe(op)`     | function                 | Composes `start()`, the given operator, and `complete()`.       |
 | `toObservable` | function                 | Wraps an observable into an `ActivityAwareObservable`.          |
 
 **How `pending$` works:**
@@ -138,9 +146,9 @@ export function activity() {
 const tracker = activity()
 
 const data$ = source$.pipe(
-  tracker.start,     // sets pending$ = true when subscribed
+  tracker.start(),   // sets pending$ = true when subscribed
   switchMap(...),    // async work
-  tracker.complete,  // sets pending$ = false when value arrives
+  tracker.complete(), // sets pending$ = false when value arrives
 )
 ```
 

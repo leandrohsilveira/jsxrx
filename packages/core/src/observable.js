@@ -14,6 +14,7 @@ import {
   map,
   Observable,
   of,
+  pipe,
   share,
   shareReplay,
   Subscription,
@@ -427,16 +428,29 @@ export function activity() {
   const pending$ = new BehaviorSubject(true)
   return {
     pending$: pending$.pipe(distinctUntilChanged()),
-    start: tap({
-      next: () => pending$.next(true),
-      error: () => pending$.next(false),
-      complete: () => pending$.next(false),
-    }),
-    complete: tap({
-      next: () => pending$.next(false),
-      error: () => pending$.next(false),
-      complete: () => pending$.next(false),
-    }),
+    /**
+     * @template T
+     * @returns {import("rxjs").MonoTypeOperatorFunction<T>}
+     */
+    start() {
+      return tap({
+        next: () => pending$.next(true),
+        error: () => pending$.next(false),
+        complete: () => pending$.next(false),
+      })
+    },
+
+    /**
+     * @template T
+     * @returns {import("rxjs").MonoTypeOperatorFunction<T>}
+     */
+    complete() {
+      return tap({
+        next: () => pending$.next(false),
+        error: () => pending$.next(false),
+        complete: () => pending$.next(false),
+      })
+    },
     /**
      * @template T
      *  @param {Observable<T>} observable
@@ -444,6 +458,15 @@ export function activity() {
      */
     toObservable(observable) {
       return new ActivityAwareObservable(observable, pending$)
+    },
+    /**
+     * @template T
+     * @template R
+     * @param {import("rxjs").OperatorFunction<T, R>} operator
+     * @returns {import("rxjs").OperatorFunction<T, R>}
+     */
+    pipe(operator) {
+      return pipe(this.start(), operator, this.complete())
     },
   }
 }
