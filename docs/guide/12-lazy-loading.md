@@ -258,12 +258,4 @@ Each chunk loads only when needed. If the user never visits `/settings`, the `Se
 
 ---
 
-## Where to Go From Here
-
-Congratulations — you've completed the JsxRx User Guide! You now have a solid foundation for building applications with JsxRx.
-
-To continue learning:
-
-- **[Examples](../examples/counter.md)** — Runnable examples demonstrating JsxRx patterns
-- **[API Reference](../api/README.md)** — Complete API documentation for all packages
-- **[Contributing](../contributing/README.md)** — Internal implementation details for contributors
+**Next**: [Testing](./13-testing.md)

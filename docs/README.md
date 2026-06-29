@@ -20,6 +20,7 @@ The JsxRx User Guide is a progressive walkthrough designed to be read in order. 
 10. **[Context API](guide/10-context.md)** — Reactive state sharing via imperative context
 11. **[Routing](guide/11-routing.md)** — Declarative routing, route trees, and resolvers
 12. **[Lazy Loading](guide/12-lazy-loading.md)** — Code splitting with `lazy()` and `lazyResolver()`
+13. **[Testing](guide/13-testing.md)** — Testing JsxRx components with `@jsxrx/testing-library`
 
 ## Contributing
 
