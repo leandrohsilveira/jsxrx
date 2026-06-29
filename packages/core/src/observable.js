@@ -16,7 +16,6 @@ import {
   of,
   share,
   shareReplay,
-  startWith,
   Subscription,
   switchMap,
   tap,
@@ -411,15 +410,17 @@ export function pending(value, debounce = 5) {
   if (isActivityAwareObservable(value)) {
     return value.pending$.pipe(debounceTime(debounce), distinctUntilChanged())
   }
-  return value.pipe(
-    map(value => {
-      if (isPendingState(value)) return value.state === "pending"
-      return false
-    }),
-    debounceTime(1),
-    startWith(false),
-    distinctUntilChanged(),
-  )
+  const pending$ = new BehaviorSubject(true)
+
+  return new Observable(subscriber => {
+    subscriber.add(
+      value.subscribe(value => {
+        if (isPendingState(value)) pending$.next(value.state === "pending")
+        else pending$.next(false)
+      }),
+    )
+    return pending$.pipe(distinctUntilChanged()).subscribe(subscriber)
+  })
 }
 
 export function activity() {

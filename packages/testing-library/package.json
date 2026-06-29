@@ -1,0 +1,29 @@
+{
+  "$schema": "https://www.schemastore.org/package.json",
+  "name": "@jsxrx/testing-library",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@jsxrx/utils": "*",
+    "@testing-library/jest-dom": "^6.9.1",
+    "rxjs": "^7.8.2"
+  },
+  "peerDependencies": {
+    "@jsxrx/core": ">=1.0.0",
+    "@testing-library/dom": "^10.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
+  }
+}

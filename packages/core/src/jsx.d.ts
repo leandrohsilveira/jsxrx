@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { Observable, SubjectLike, Subscription } from "rxjs"
+import type { Observable, Observer, SubjectLike, Subscription } from "rxjs"
 import type { VDOMType } from "./constants/vdom.js"
 
 export interface Obj {}
@@ -221,7 +221,7 @@ export interface IRenderer<TextNode = unknown, ElementNode = unknown> {
   ): void
   remove(node: TextNode | ElementNode, target: ElementNode): void
   hasChild(parent: ElementNode, child: TextNode | ElementNode): boolean
-  subscribe(): Subscription
+  subscribe(observer?: Observer<any> | ((value: any) => void)): Subscription
 }
 
 export type ElementNode =

@@ -1,6 +1,7 @@
 /**
+ * @import { Observer } from "rxjs"
  * @import { ElementPosition, IRenderer } from "../jsx.js"
- * @import { VRenderEvent } from "./types.js"
+ * @import { VRenderEvent } from "../vdom/types.js"
  * @import { Logger } from "../logger.js"
  */
 
@@ -124,7 +125,10 @@ export class BatchRenderer {
     })
   }
 
-  subscribe() {
+  /**
+   * @param {Observer<any> | ((value: any) => void)} [observer]
+   */
+  subscribe(observer) {
     return this.#publisher$
       .pipe(
         tap({
@@ -159,9 +163,6 @@ export class BatchRenderer {
               }
               toRemoveMap.set(event.payload, event)
               break
-            default:
-              // TODO: implement moving
-              break
           }
         }
 
@@ -181,6 +182,9 @@ export class BatchRenderer {
         }
 
         this.#logger?.completeBatch(processed)
+
+        if (typeof observer === "function") observer(processed)
+        if (observer && "next" in observer) observer.next(processed)
       })
   }
 }

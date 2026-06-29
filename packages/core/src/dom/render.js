@@ -2,7 +2,7 @@
  * @import { Logger } from "../logger.js"
  */
 
-import { BatchRenderer } from "../vdom/batch-renderer.js"
+import { BatchRenderer } from "../renderer/renderer.js"
 import { createRoot as createAbstractRoot } from "../vdom/vdom.js"
 import { DOMRenderer } from "./renderer.js"
 
