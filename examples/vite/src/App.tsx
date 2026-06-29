@@ -1,13 +1,13 @@
-import { state, pending, Suspense } from "@jsxrx/core"
+import { state, Suspense, activity } from "@jsxrx/core"
 import { delay, map } from "rxjs"
 import CountDisplay from "./CountDisplay.js"
 
 export default function App() {
   const count$ = state(0)
 
-  const delayedCount$ = count$.pipe(delay(1000))
+  const tracker = activity()
 
-  const countPending$ = pending(delayedCount$)
+  const delayedCount$ = count$.pipe(tracker.pipe(delay(1000)))
 
   function increase() {
     count$.set(count$.value + 1)
@@ -30,10 +30,10 @@ export default function App() {
           ),
         )}
       </Suspense>
-      <button type="button" disabled={countPending$} onClick={increase}>
+      <button type="button" disabled={tracker.pending$} onClick={increase}>
         Increase
       </button>
-      <button type="button" disabled={countPending$} onClick={decrease}>
+      <button type="button" disabled={tracker.pending$} onClick={decrease}>
         Decrease
       </button>
     </CountDisplay>
