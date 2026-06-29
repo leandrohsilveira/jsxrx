@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "analyze": "VITE_PLUGIN_ENABLE_ANALYZER=true vite build",
     "preview": "vite preview",
     "test": "vitest"
   },
