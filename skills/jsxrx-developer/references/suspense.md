@@ -70,8 +70,7 @@ A 50ms loading spike without tolerance would flash the spinner then immediately 
 3. **API client `.fetch()`** — `endpoint.fetch(input$)` returns an `ActivityAwareObservable`. Placing it in JSX inside a `<Suspense>` boundary gives automatic loading states:
 
     ```tsx
-    import { Suspense, state } from "@jsxrx/core"
-    import { map } from "rxjs"
+    import { each, Suspense, state } from "@jsxrx/core"
 
     function UserList() {
       const page$ = state(1)
@@ -81,7 +80,10 @@ A 50ms loading spike without tolerance would flash the spinner then immediately 
         <Suspense fallback={<Skeleton />}>
           <div>
             {users$.pipe(
-              map(users => users.map(user => <UserCard key={user.id} user={user} />)),
+              each(
+                user$ => <UserCard user={user$} />,
+                { trackBy: user => user.id },
+              ),
             )}
           </div>
         </Suspense>

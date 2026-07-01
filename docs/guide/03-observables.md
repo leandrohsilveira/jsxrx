@@ -117,15 +117,50 @@ When the condition changes, JsxRx reconciles the subtree. If the emitted JSX tre
 
 ### 3. List Rendering
 
+JsxRx provides two approaches for rendering lists from observables, depending on your performance and reactivity needs.
+
+**Simple approach** — use when items are static or the list is small:
+
 ```jsx
 {items$.pipe(
   map(items => items.map(item => <Item key={item.id} data={item} />))
 )}
 ```
 
-The Observable emits an array, and the `map` callback produces an array of JSX elements. Each child is reconciled by its `key` prop: items with matching keys are updated in place, new items are inserted, and removed items are unmounted.
+The Observable emits an array, and `map` produces an array of JSX elements. Each child is reconciled by its `key` prop. However, every emission re-maps the entire array, recreating all JSX elements even if only one item changed.
 
-For optimal performance with large lists, ensure each item has a stable, unique `key`.
+**Optimized approach** — use `each()` for dynamic lists where items change independently:
+
+```jsx
+import { each } from "@jsxrx/core"
+import { map } from "rxjs"
+
+{items$.pipe(
+  each(
+    (item$, index$) => (
+      <ListItem>
+        <span>{item$.pipe(map(item => item.name))}</span>
+      </ListItem>
+    ),
+    {
+      trackBy: item => item.id,
+      distinct: shallowComparator,
+      whenEmpty: <p className="empty">No items</p>,
+    },
+  ),
+)}
+```
+
+`each()` transforms the source `Observable<T[]>` into an `Observable<Observable<R>[]>`. For each item, the `mapper` receives an `Observable<T>` (not a plain value) and an `Observable<number>` of its index. Items are identified by `trackBy`:
+
+- **Existing keys** — the item observable pushes the new value; the component updates surgically without re-mapping.
+- **New keys** — the mapper is called, creating a new component instance.
+- **Removed keys** — the previous output is unmounted and cleaned up.
+- **Empty arrays** — the `whenEmpty` value is rendered instead.
+
+This per-item reactive model prevents unnecessary work: a single item change no longer re-maps the entire list. Combine with `distinct` (using `shallowComparator` from `@jsxrx/utils`) to skip updates when the item reference hasn't changed.
+
+For optimal performance with large lists, always provide a stable, unique `trackBy` key.
 
 ### 4. Derived Values
 

@@ -177,10 +177,32 @@ function Clock(props$: Observable<{}>, { subscription }: Lifecycle) {
 
 ### Lists
 
-Always provide a **stable, unique** `key` on each item:
+Use `each()` for lists from observable arrays — it preserves component instances and prevents full re-mapping on every emission:
+
+```tsx
+import { each } from "@jsxrx/core"
+import { shallowComparator } from "@jsxrx/utils"
+
+{items$.pipe(
+  each(
+    item$ => <TodoItem todo={item$} />,
+    {
+      trackBy: item => item.id,
+      distinct: shallowComparator,
+      whenEmpty: <p className="empty">No items</p>,
+    },
+  ),
+)}
+```
+
+Each item gets its own `Observable<T>` via `item$` — the `trackBy` function identifies items so existing components update in place. The `distinct` option (using `shallowComparator`) skips updates when item references haven't changed. The `whenEmpty` value renders when the source array is empty.
+
+For simple static lists, the `map` pattern still works:
 ```tsx
 {items$.pipe(map(items => items.map(item => <TodoItem key={item.id} todo={item} />)))}
 ```
+
+Always provide a stable, unique `trackBy` key when using `each()` (or `key` when using `map`).
 
 ### Conditional Rendering
 
@@ -238,7 +260,7 @@ endpoint.send(input)     // Promise<Output> — one-off call
 | 4 | **Never `<Context.Provider>`.** Context is imperative: `context.set()` / `context.require()`. |
 | 5 | **Always `subscription.add()`** for every manual `.subscribe()` call. |
 | 6 | **Always `emitter()`** for callback props that can change over time. |
-| 7 | **Always `key`** on list items — stable, unique, never array index. |
+| 7 | **Always `key`/`trackBy`** on list items — stable, unique, never array index. |
 | 8 | **Never `refresh()` synchronously** in resolver body — infinite loop. Return it as callback. |
 | 9 | **Never import from `"react"`.** JsxRx and React are mutually exclusive. |
 | 10 | **Never dependency arrays.** RxJS tracks observable dependencies automatically. |

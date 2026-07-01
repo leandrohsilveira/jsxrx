@@ -247,12 +247,12 @@ clears the input.
 ## src/components/TodoList.tsx
 
 Receives a `todos$` observable and renders a `<TodoItem>` for each todo, using
-**keys** for efficient VDOM reconciliation:
+the `each()` operator for per-item reactivity:
 
 ```tsx
-import { Props } from "@jsxrx/core"
-import { map } from "rxjs"
+import { each, Props } from "@jsxrx/core"
 import type { Observable } from "rxjs"
+import { shallowComparator } from "@jsxrx/utils"
 import { TodoItem } from "./TodoItem"
 import type { Todo } from "../types"
 
@@ -268,15 +268,23 @@ export function TodoList(props$: Observable<TodoListProps>) {
   return (
     <ul style={{ listStyle: "none", padding: 0 }}>
       {todos$.pipe(
-        map(todos =>
-          todos.map(todo => (
+        each(
+          todo$ => (
             <TodoItem
-              key={todo.id}
-              todo={todo}
+              todo={todo$}
               onToggle={onToggle$}
               onDelete={onDelete$}
             />
-          )),
+          ),
+          {
+            trackBy: todo => todo.id,
+            distinct: shallowComparator,
+            whenEmpty: (
+              <li style={{ padding: "1rem", color: "#999" }}>
+                No todos yet
+              </li>
+            ),
+          },
         ),
       )}
     </ul>
@@ -284,12 +292,14 @@ export function TodoList(props$: Observable<TodoListProps>) {
 }
 ```
 
-**Key patterns in TodoList.tsx:** `{todos$.pipe(map(...))}` embeds a transformed
-observable directly in JSX; the `ObservableNode` reconciles children each time
-the list changes. `key={todo.id}` on `<TodoItem>` is essential — without keys,
- JsxRx can't match existing items and would recreate the entire list.
-`onToggle$` and `onDelete$` are passed through as observables (not callbacks);
-the child uses `emitter()` to unwrap them.
+**Key patterns in TodoList.tsx:** `each()` receives a mapper that gets an
+`Observable<Todo>` per item via `todo$` — each item drives its own reactive
+bindings. Items are tracked by `trackBy: todo => todo.id` (replacing the
+inline `key` prop), so existing items update in place when the array changes.
+The `distinct` option with `shallowComparator` skips updates when item
+references haven't changed. `whenEmpty` renders a fallback when the list is
+empty. `onToggle$` and `onDelete$` are passed through as observables (not
+callbacks); the child uses `emitter()` to unwrap them.
 
 ---
 
@@ -389,9 +399,10 @@ observable that toggles strikethrough and color.
     are computed purely via `pipe(map(...))`. No extra state variables, no
     manual synchronization.
 
-4.  **Keys in lists** — Each `<TodoItem>` has a `key={todo.id}`. When `todos$`
-    emits a new array, JsxRx matches items by key and updates existing component
-    nodes in place — without recreating them.
+4.  **Keys in lists** — The `each()` operator with `trackBy: todo => todo.id`
+    replaces the inline `key` prop. Items are tracked by their `trackBy` key
+    across array emissions — existing components update in place, only new items
+    trigger the mapper.
 
 5.  **Immutable updates** — `todos$.set([...todos$.value, newTodo])` always
     creates a new array. This ensures `distinctUntilChanged` (used internally by

@@ -79,9 +79,9 @@ todos$.set(todos$.value.map(t => t.id === id ? { ...t, done: true } : t))  // up
 
 ---
 
-### 4. ALWAYS use `key` in list rendering
+### 4. ALWAYS use `key` or `trackBy` in list rendering
 
-Without `key`, JsxRx cannot reconcile list items across emissions. DOM elements may be incorrectly reused, created, or destroyed, leading to broken state, lost focus, and incorrect event handlers. Always provide a **stable, unique** `key` for each item in a mapped array.
+Without `key` (or `trackBy` for `each()`), JsxRx cannot reconcile list items across emissions. DOM elements may be incorrectly reused, created, or destroyed, leading to broken state, lost focus, and incorrect event handlers. Always provide a **stable, unique** identifier for each item.
 
 ```tsx
 // ❌ WRONG — no keys; DOM reconciliation breaks on re-order or insert/delete
@@ -89,9 +89,23 @@ Without `key`, JsxRx cannot reconcile list items across emissions. DOM elements 
   map(items => items.map(item => <TodoItem todo={item} />))
 )}
 
-// ✅ RIGHT — stable, unique key on every item
+// ✅ RIGHT — stable, unique key on every item (simple lists)
 {items$.pipe(
   map(items => items.map(item => <TodoItem key={item.id} todo={item} />))
+)}
+
+// ✅ RIGHT — trackBy with each() for optimal per-item reactivity
+import { each } from "@jsxrx/core"
+import { shallowComparator } from "@jsxrx/utils"
+
+{items$.pipe(
+  each(
+    item$ => <TodoItem todo={item$} />,
+    {
+      trackBy: item => item.id,
+      distinct: shallowComparator,
+    },
+  ),
 )}
 ```
 

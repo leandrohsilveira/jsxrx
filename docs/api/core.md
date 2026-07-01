@@ -84,11 +84,52 @@ result$.subscribe(({ plain, deferred }) => {
 
 ---
 
-### `ref`
+### `each`
 
 ```ts
-ref<T>(construct: new () => T): Ref<T>
+each<T, R, K, E = null>(
+  mapper: (item$: Observable<T>, index$: Observable<number>) => R,
+  options: {
+    trackBy: (item: T, index: number) => K
+    distinct?: (a: T, b: T) => boolean
+    whenEmpty?: E
+  },
+): OperatorFunction<T[], Observable<R>[] | E>
 ```
+
+Creates an observable-based list renderer that preserves component instances across array mutations. For each item in the source array, the `mapper` function receives an `Observable<T>` of the item's value and an `Observable<number>` of its index — enabling per-item reactive bindings without re-mapping the entire list on every emission.
+
+Items are identified by the `trackBy` key function. When the array emits, items with existing keys update in place (pushing new values to their item observables), while new keys trigger the mapper for the first time. This prevents unnecessary component destruction and recreation.
+
+The optional `distinct` comparator controls when item observables emit new values (defaults to always emit). The optional `whenEmpty` value is rendered when the source array is empty — replacing the output with a single element instead of an array.
+
+```tsx
+import { each } from "@jsxrx/core"
+import { map } from "rxjs"
+import { shallowComparator } from "@jsxrx/utils"
+
+{items$.pipe(
+  each(
+    (item$, index$) => (
+      <ListItem>
+        <span>{item$.pipe(map(item => item.name))}</span>
+        <span className="text-muted">#{index$}</span>
+      </ListItem>
+    ),
+    {
+      trackBy: item => item.id,
+      distinct: shallowComparator,
+      whenEmpty: <p className="empty">No items</p>,
+    },
+  ),
+)}
+```
+
+The source observable emits an array of items. Each emission reconciles items by `trackBy` key: existing keys receive updated values through their item observable (triggering surgical DOM updates), new keys invoke the mapper, and removed keys are cleaned up. The result is an `Observable<R>[]` (or the `whenEmpty` value) for direct embedding in JSX.
+
+---
+
+### `ref`
 
 Creates a DOM element reference. Returns `ElementRef<T>` with `.kind = "ref"` and `.current: BehaviorSubject<T | null>`. The constructor parameter is used only for type inference — the value is initialized to `null`.
 
@@ -141,7 +182,6 @@ if (isRef(someValue)) {
   someValue.current.subscribe(el => {
     /* ... */
   })
-}
 ```
 
 ---

@@ -106,6 +106,22 @@ import { state, variants } from "@jsxrx/core"
 const btnClass$ = variants(variant$, { primary: "bg-blue-500", danger: "bg-red-500" }, "bg-gray-200")
 ```
 
+### `each()`
+```ts
+each<T, R, K, E = null>(                                                      // from "@jsxrx/core"
+  mapper: (item$: Observable<T>, index$: Observable<number>) => R,
+  options: { trackBy: (item: T, index: number) => K, distinct?: (a: T, b: T) => boolean, whenEmpty?: E }
+): OperatorFunction<T[], Observable<R>[] | E>
+```
+Observable-based list renderer. Each item gets its own `Observable<T>` via `item$`; items are tracked by `trackBy` key so existing components update in place. `distinct` skips unchanged items; `whenEmpty` renders a fallback for empty arrays.
+```tsx
+import { each } from "@jsxrx/core"
+import { shallowComparator } from "@jsxrx/utils"
+{items$.pipe(
+  each(item$ => <Item data={item$} />, { trackBy: item => item.id, distinct: shallowComparator, whenEmpty: <Empty /> }),
+)}
+```
+
 ### `Suspense`
 ```ts
 // Component<PropsWithChildren<SuspenseProps>>   from "@jsxrx/core"
