@@ -122,7 +122,11 @@ export function RouteComponent(props$, { context }) {
     distinctUntilChanged(shallowComparator),
     map(({ routes, path }) => {
       if (isRoute(routes)) {
-        return matched$.pipe(
+        return combine({
+          parentMatch: matched$,
+          match: match$,
+        }).pipe(
+          map(({ parentMatch, match }) => parentMatch && !!match),
           distinctUntilChanged(),
           debounceTime(1),
           switchMap(match => {
