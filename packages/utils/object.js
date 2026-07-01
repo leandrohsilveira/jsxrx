@@ -11,7 +11,7 @@
 export function shallowComparator(a, b, comparator = (a, b) => a === b) {
   if (a === b) return true
   if (Array.isArray(a) && Array.isArray(b))
-    return a.every((item, index) => item === b[index])
+    return a.length === b.length && a.every((item, index) => item === b[index])
   if (Array.isArray(a) || Array.isArray(b)) return false
   if (typeof a !== "object" || typeof b !== "object") return false
   if (a === null || b === null) return false
