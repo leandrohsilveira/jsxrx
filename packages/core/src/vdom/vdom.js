@@ -731,6 +731,8 @@ function createObservableNode(renderer, parentId, input$, instance) {
     ),
   )
 
+  let key = "key" in input$ ? String(input$.key) : null
+
   let placed = false
 
   return {
@@ -742,7 +744,7 @@ function createObservableNode(renderer, parentId, input$, instance) {
       return latest?.name
     },
     get key() {
-      return latest?.key ?? null
+      return key ?? latest?.key ?? null
     },
     get latest() {
       return latest
@@ -811,7 +813,8 @@ function createObservableNode(renderer, parentId, input$, instance) {
     },
     update(next) {
       assert(next, "observable node received null instead of an observable")
-      subject$.next(next)
+      const nextKey = "key" in next ? String(next.key) : null
+      if (nextKey === key) return subject$.next(next)
     },
     placeIn(position) {
       action$.next("place")
@@ -1110,8 +1113,8 @@ function genId(parentId, node, defaultKey, index) {
   const key = isRenderNode(node)
     ? (node.key ?? (defaultKey === "indexAsDefaultKey" ? index : null))
     : index
-  if (key === undefined) return id
-  return `${id}:${key}`
+  if (key === undefined || key === null) return id
+  return String(key)
 }
 
 /**

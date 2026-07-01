@@ -79,16 +79,16 @@ export function each(mapper, options) {
               }
               keymapping[mappingKey] ??= new BehaviorSubject(item)
               indexes[mappingKey] ??= new BehaviorSubject(index)
-              newResult.push(
-                asObservable(
-                  mapper(
-                    keymapping[mappingKey].pipe(
-                      distinctUntilChanged(options.distinct),
-                    ),
-                    indexes[mappingKey].pipe(distinctUntilChanged()),
+              const content$ = asObservable(
+                mapper(
+                  keymapping[mappingKey].pipe(
+                    distinctUntilChanged(options.distinct),
                   ),
+                  indexes[mappingKey].pipe(distinctUntilChanged()),
                 ),
               )
+              assignKey(content$, key)
+              newResult.push(content$)
               newPositions.push(mappingKey)
             }
 
@@ -120,4 +120,13 @@ export function each(mapper, options) {
       }
     })
   }
+}
+
+/**
+ * @param {unknown} value
+ * @param {unknown} key
+ */
+function assignKey(value, key) {
+  if (value === null || value === undefined || typeof value !== "object") return
+  Object.assign(value, { key })
 }
