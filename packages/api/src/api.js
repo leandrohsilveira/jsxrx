@@ -90,16 +90,16 @@ export function createHttpClient({ baseUrl, defaultHeaders = {} }) {
         }
       )
 
-      const { pipe, toObservable } = activity()
+      const tracker = activity()
 
       return {
         send,
         fetch(input$) {
-          return toObservable(
+          return tracker.toObservable(
             input$.pipe(
               debounceTime(1),
               distinctUntilChanged(shallowComparator),
-              pipe(
+              tracker.pipe(
                 switchMap(
                   input =>
                     /** @type {Observable<Output>} */ (from(send(input))),
