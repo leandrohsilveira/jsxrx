@@ -1,5 +1,6 @@
 export * from "./component.js"
 export { Context } from "./context.js"
+export * from "./each.js"
 export * from "./fragment.js"
 export * from "./loggers.js"
 export { activity, combine, Input, pending } from "./observable.js"
